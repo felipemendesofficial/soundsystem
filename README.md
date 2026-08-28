@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Controle de Estoque — Kardex / Média Ponderada
 
-## Getting Started
+Sistema de controle de entrada e saída de mercadorias com custo médio ponderado móvel, ficha Kardex por item, multi-depósito e multiusuário. Stack: Next.js (App Router) + TypeScript + Prisma + PostgreSQL + Auth.js.
 
-First, run the development server:
+## Pré-requisitos
+
+- Node.js 20+
+- Docker (para rodar o Postgres local)
+
+## Configuração inicial
 
 ```bash
+# 1. Instalar dependências (se ainda não instalado)
+npm install
+
+# 2. Subir o Postgres local
+docker compose up -d
+
+# 3. Aplicar o schema no banco
+npx prisma migrate dev --name init
+
+# 4. Popular com usuários de teste e um depósito padrão
+npm run db:seed
+
+# 5. Rodar o projeto
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Acesse [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Usuários de teste (criados pelo seed)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Perfil     | Email                  | Senha       | Observação                              |
+|------------|-------------------------|-------------|------------------------------------------|
+| admin      | admin@exemplo.com       | admin123    | Acesso total, gerencia usuários          |
+| estoquista | estoquista@exemplo.com  | estoque123  | Vê custo/margem, lança qualquer movimento|
+| vendedor   | vendedor@exemplo.com    | venda123    | Só registra vendas, não vê custo/margem  |
 
-## Learn More
+**Troque essas senhas antes de qualquer uso real.**
 
-To learn more about Next.js, take a look at the following resources:
+## Estrutura
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `prisma/schema.prisma` — modelo de dados (depósitos, usuários, produtos, fornecedores, clientes, estoque, movimentações)
+- `src/lib/kardex.ts` — núcleo do sistema: cálculo do custo médio ponderado móvel, transacional e com trava de linha para concorrência
+- `src/lib/permissions.ts` — regras de quem vê custo/margem e quem gerencia usuários
+- `src/app/(app)/*` — telas autenticadas (produtos, fornecedores, clientes, depósitos, usuários, movimentações, kardex, posição de estoque)
+- `src/app/login` — autenticação
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Comandos úteis
 
-## Deploy on Vercel
+```bash
+npx prisma studio       # navegador visual do banco
+npx prisma migrate dev  # criar/aplicar novas migrações após mudar o schema
+npm run db:seed         # repopular dados de teste
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Fora do escopo do MVP (Fase 1)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Emissão de nota fiscal, integrações externas, relatório de margem/giro de estoque/entradas por fornecedor — previstos para uma fase futura.

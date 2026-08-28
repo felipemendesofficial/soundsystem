@@ -1,0 +1,173 @@
+// Prisma schema — Sistema de Controle de Estoque (Kardex / Média Ponderada)
+// Modelagem baseada em modelo-de-dados-sistema-estoque-kardex.md
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Perfil {
+  admin
+  estoquista
+  vendedor
+}
+
+enum TipoPessoa {
+  fisica
+  juridica
+}
+
+enum TipoCliente {
+  varejista
+  atacadista
+}
+
+enum EstadoConservacao {
+  excelente
+  bom
+  regular
+  para_reparo
+}
+
+enum UnidadeMedida {
+  unidade
+  metro
+  kit
+}
+
+enum TipoMovimento {
+  compra
+  devolucao_cliente
+  ajuste_entrada
+  transferencia_entrada
+  venda
+  devolucao_fornecedor
+  perda_avaria
+  uso_interno
+  ajuste_saida
+  transferencia_saida
+}
+
+model Deposito {
+  id        String   @id @default(uuid())
+  nome      String
+  endereco  String?
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  usuariosPadrao   Usuario[]         @relation("UsuarioDepositoPadrao")
+  produtoEstoques  ProdutoEstoque[]
+  movimentacoes    Movimentacao[]
+
+  @@map("depositos")
+}
+
+model Usuario {
+  id                String   @id @default(uuid())
+  nome              String
+  email             String   @unique
+  senhaHash         String   @map("senha_hash")
+  perfil            Perfil   @default(vendedor)
+  depositoPadraoId  String?  @map("deposito_padrao_id")
+  ativo             Boolean  @default(true)
+  criadoEm          DateTime @default(now()) @map("criado_em")
+
+  depositoPadrao    Deposito?      @relation("UsuarioDepositoPadrao", fields: [depositoPadraoId], references: [id])
+  movimentacoes     Movimentacao[]
+
+  @@map("usuarios")
+}
+
+model Fornecedor {
+  id         String      @id @default(uuid())
+  nome       String
+  tipoPessoa TipoPessoa  @map("tipo_pessoa")
+  documento  String?
+  telefone   String?
+  email      String?
+  criadoEm   DateTime    @default(now()) @map("criado_em")
+
+  movimentacoes Movimentacao[]
+
+  @@map("fornecedores")
+}
+
+model Cliente {
+  id          String      @id @default(uuid())
+  nome        String
+  tipoCliente TipoCliente @map("tipo_cliente")
+  telefone    String?
+  email       String?
+  criadoEm    DateTime    @default(now()) @map("criado_em")
+
+  movimentacoes Movimentacao[]
+
+  @@map("clientes")
+}
+
+model Produto {
+  id                 String            @id @default(uuid())
+  sku                String            @unique
+  nome               String
+  categoria          String
+  marca              String?
+  modelo             String?
+  estadoConservacao  EstadoConservacao @map("estado_conservacao")
+  unidadeMedida      UnidadeMedida     @map("unidade_medida")
+  fotoUrl            String?           @map("foto_url")
+  ativo              Boolean           @default(true)
+  criadoEm           DateTime          @default(now()) @map("criado_em")
+
+  estoques      ProdutoEstoque[]
+  movimentacoes Movimentacao[]
+
+  @@map("produtos")
+}
+
+model ProdutoEstoque {
+  id                String   @id @default(uuid())
+  produtoId         String   @map("produto_id")
+  depositoId        String   @map("deposito_id")
+  quantidadeSaldo   Decimal  @default(0) @map("quantidade_saldo") @db.Decimal(14, 3)
+  custoMedioAtual   Decimal  @default(0) @map("custo_medio_atual") @db.Decimal(14, 4)
+  valorTotalSaldo   Decimal  @default(0) @map("valor_total_saldo") @db.Decimal(14, 2)
+  atualizadoEm      DateTime @updatedAt @map("atualizado_em")
+
+  produto  Produto  @relation(fields: [produtoId], references: [id])
+  deposito Deposito @relation(fields: [depositoId], references: [id])
+
+  @@unique([produtoId, depositoId])
+  @@map("produto_estoque")
+}
+
+model Movimentacao {
+  id                    String        @id @default(uuid())
+  produtoId             String        @map("produto_id")
+  depositoId            String        @map("deposito_id")
+  tipoMovimento         TipoMovimento @map("tipo_movimento")
+  dataMovimento         DateTime      @default(now()) @map("data_movimento")
+  quantidade            Decimal       @db.Decimal(14, 3)
+  custoUnitario         Decimal?      @map("custo_unitario") @db.Decimal(14, 4)
+  custoMedioApos        Decimal       @map("custo_medio_apos") @db.Decimal(14, 4)
+  saldoQuantidadeApos   Decimal       @map("saldo_quantidade_apos") @db.Decimal(14, 3)
+  saldoValorApos        Decimal       @map("saldo_valor_apos") @db.Decimal(14, 2)
+  precoVenda            Decimal?      @map("preco_venda") @db.Decimal(14, 2)
+  clienteId             String?       @map("cliente_id")
+  fornecedorId          String?       @map("fornecedor_id")
+  usuarioId             String        @map("usuario_id")
+  observacao            String?
+  criadoEm              DateTime      @default(now()) @map("criado_em")
+
+  produto    Produto     @relation(fields: [produtoId], references: [id])
+  deposito   Deposito    @relation(fields: [depositoId], references: [id])
+  cliente    Cliente?    @relation(fields: [clienteId], references: [id])
+  fornecedor Fornecedor? @relation(fields: [fornecedorId], references: [id])
+  usuario    Usuario     @relation(fields: [usuarioId], references: [id])
+
+  @@index([produtoId, depositoId, dataMovimento])
+  @@map("movimentacoes")
+}
