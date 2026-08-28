@@ -25,6 +25,10 @@ declare module "next-auth" {
 export const authConfig = {
   pages: { signIn: "/login" },
   session: { strategy: "jwt" },
+  // Necessário atrás de proxy reverso (Traefik) — sem isso o Auth.js rejeita
+  // o Host header encaminhado com "UntrustedHost". Traefik é o único ingress
+  // (portas 80/443 não são acessíveis diretamente), então é seguro confiar nele.
+  trustHost: true,
   providers: [],
   callbacks: {
     jwt({ token, user }) {
