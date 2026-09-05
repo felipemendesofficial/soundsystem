@@ -17,7 +17,7 @@ export default async function NovaMovimentacaoPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Nova Movimentação</h1>
       <MovimentacaoForm
-        produtos={produtos.map((p) => ({ id: p.id, label: `${p.sku} — ${p.nome}` }))}
+        produtos={produtos.map((p) => ({ id: p.id, label: `${p.nome} — ${p.sku}` }))}
         depositos={depositos.map((d) => ({ id: d.id, label: d.nome }))}
         fornecedores={fornecedores.map((f) => ({ id: f.id, label: f.nome }))}
         clientes={clientes.map((c) => ({ id: c.id, label: c.nome }))}

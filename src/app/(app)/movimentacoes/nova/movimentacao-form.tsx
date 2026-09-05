@@ -5,6 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxIcon,
+  ComboboxInput,
+  ComboboxInputGroup,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
 import { registrarMovimento, type MovimentacaoFormState } from "../actions";
 
 const ENTRADA_TIPOS = new Set(["compra", "devolucao_cliente", "ajuste_entrada"]);
@@ -58,7 +68,6 @@ export function MovimentacaoForm({
   const [state, formAction, pending] = useActionState(registrarMovimento, estadoInicial);
 
   const tiposItems = Object.fromEntries(tiposDisponiveis.map((tipo) => [tipo, TIPOS_LABEL[tipo]]));
-  const produtosItems = Object.fromEntries(produtos.map((p) => [p.id, p.label]));
   const depositosItems = Object.fromEntries(depositos.map((d) => [d.id, d.label]));
   const fornecedoresItems = Object.fromEntries(fornecedores.map((f) => [f.id, f.label]));
   const clientesItems = Object.fromEntries(clientes.map((c) => [c.id, c.label]));
@@ -96,18 +105,27 @@ export function MovimentacaoForm({
 
       <div className="space-y-2">
         <Label htmlFor="produtoId">Produto</Label>
-        <Select name="produtoId" items={produtosItems}>
-          <SelectTrigger id="produtoId" className="w-full">
-            <SelectValue placeholder="Selecione o produto" />
-          </SelectTrigger>
-          <SelectContent>
-            {produtos.map((p) => (
-              <SelectItem key={p.id} value={p.id}>
-                {p.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Combobox
+          name="produtoId"
+          items={produtos}
+          itemToStringLabel={(item: Item) => item.label}
+          itemToStringValue={(item: Item) => item.id}
+        >
+          <ComboboxInputGroup>
+            <ComboboxInput id="produtoId" placeholder="Buscar por descrição ou SKU..." />
+            <ComboboxIcon />
+          </ComboboxInputGroup>
+          <ComboboxContent>
+            <ComboboxEmpty>Nenhum produto encontrado.</ComboboxEmpty>
+            <ComboboxList>
+              {(item: Item) => (
+                <ComboboxItem key={item.id} value={item}>
+                  {item.label}
+                </ComboboxItem>
+              )}
+            </ComboboxList>
+          </ComboboxContent>
+        </Combobox>
       </div>
 
       {ehTransferencia ? (
