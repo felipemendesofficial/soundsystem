@@ -12,6 +12,8 @@ import {
   Users,
   Warehouse,
   UserCog,
+  Tags,
+  Ruler,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -31,7 +33,7 @@ const NAV_ITEMS = [
   { href: "/estoque", label: "Estoque", icon: ClipboardList },
 ];
 
-const MAIS_ROUTES = ["/fornecedores", "/clientes", "/depositos", "/usuarios"];
+const MAIS_ROUTES = ["/fornecedores", "/clientes", "/depositos", "/categorias", "/unidades-medida", "/usuarios"];
 
 function NavLink({
   href,
@@ -102,6 +104,14 @@ export function BottomNav({ isAdmin }: { isAdmin: boolean }) {
           <DropdownMenuItem render={<Link href="/depositos" />}>
             <Warehouse />
             Depósitos
+          </DropdownMenuItem>
+          <DropdownMenuItem render={<Link href="/categorias" />}>
+            <Tags />
+            Categorias
+          </DropdownMenuItem>
+          <DropdownMenuItem render={<Link href="/unidades-medida" />}>
+            <Ruler />
+            Unidades de Medida
           </DropdownMenuItem>
           {isAdmin && (
             <DropdownMenuItem render={<Link href="/usuarios" />}>

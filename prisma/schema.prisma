@@ -33,12 +33,6 @@ enum EstadoConservacao {
   para_reparo
 }
 
-enum UnidadeMedida {
-  unidade
-  metro
-  kit
-}
-
 enum TipoMovimento {
   compra
   devolucao_cliente
@@ -109,19 +103,43 @@ model Cliente {
   @@map("clientes")
 }
 
+model Categoria {
+  id       String   @id @default(uuid())
+  nome     String   @unique
+  ativo    Boolean  @default(true)
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  produtos Produto[]
+
+  @@map("categorias")
+}
+
+model UnidadeMedida {
+  id       String   @id @default(uuid())
+  nome     String   @unique
+  ativo    Boolean  @default(true)
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  produtos Produto[]
+
+  @@map("unidades_medida")
+}
+
 model Produto {
   id                 String            @id @default(uuid())
   sku                String            @unique
   nome               String
-  categoria          String
+  categoriaId        String            @map("categoria_id")
   marca              String?
   modelo             String?
   estadoConservacao  EstadoConservacao @map("estado_conservacao")
-  unidadeMedida      UnidadeMedida     @map("unidade_medida")
+  unidadeMedidaId    String            @map("unidade_medida_id")
   fotoUrl            String?           @map("foto_url")
   ativo              Boolean           @default(true)
   criadoEm           DateTime          @default(now()) @map("criado_em")
 
+  categoria     Categoria      @relation(fields: [categoriaId], references: [id])
+  unidadeMedida UnidadeMedida  @relation(fields: [unidadeMedidaId], references: [id])
   estoques      ProdutoEstoque[]
   movimentacoes Movimentacao[]
 

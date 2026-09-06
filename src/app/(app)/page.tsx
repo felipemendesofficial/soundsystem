@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, Plus, ClipboardList, Package, Truck, Users, Warehouse, UserCog } from "lucide-react";
+import { ChevronRight, Plus, ClipboardList, Package, Truck, Users, Warehouse, UserCog, Tags, Ruler } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { podeVerCusto, podeGerenciarUsuarios } from "@/lib/permissions";
@@ -55,6 +55,8 @@ export default async function HomePage() {
     { href: "/fornecedores", titulo: "Fornecedores", icon: Truck },
     { href: "/clientes", titulo: "Clientes", icon: Users },
     { href: "/depositos", titulo: "Depósitos", icon: Warehouse },
+    { href: "/categorias", titulo: "Categorias", icon: Tags },
+    { href: "/unidades-medida", titulo: "Unidades de Medida", icon: Ruler },
     ...(podeGerenciarUsuarios(perfil) ? [{ href: "/usuarios", titulo: "Usuários", icon: UserCog }] : []),
   ];
 

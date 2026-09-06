@@ -4,7 +4,10 @@ import { Button } from "@/components/ui/button";
 import { ProdutosLista, type ItemProduto } from "@/components/produtos-lista";
 
 export default async function ProdutosPage() {
-  const produtos = await db.produto.findMany({ orderBy: { nome: "asc" } });
+  const produtos = await db.produto.findMany({
+    include: { categoria: true },
+    orderBy: { nome: "asc" },
+  });
 
   const itensLista: ItemProduto[] = produtos.map((p) => {
     const marcaModelo = [p.marca, p.modelo].filter(Boolean).join(" / ") || "-";
@@ -12,9 +15,9 @@ export default async function ProdutosPage() {
       id: p.id,
       sku: p.sku,
       nome: p.nome,
-      categoria: p.categoria,
+      categoria: p.categoria.nome,
       marcaModelo,
-      buscaTexto: [p.sku, p.nome, p.categoria, p.marca, p.modelo]
+      buscaTexto: [p.sku, p.nome, p.categoria.nome, p.marca, p.modelo]
         .filter(Boolean)
         .join(" ")
         .toLowerCase(),

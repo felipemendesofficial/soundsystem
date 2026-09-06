@@ -10,25 +10,34 @@ import type { ProdutoFormState } from "./actions";
 
 type Action = (prevState: ProdutoFormState, formData: FormData) => Promise<ProdutoFormState>;
 
+type Opcao = { id: string; nome: string };
+
 const labelClass = "text-[15px] font-semibold";
 const inputClass = "h-11 px-3.5 text-base bg-card";
 
 export function ProdutoForm({
   action,
+  categorias,
+  unidadesMedida,
   defaultValues,
 }: {
   action: Action;
+  categorias: Opcao[];
+  unidadesMedida: Opcao[];
   defaultValues?: {
     sku: string;
     nome: string;
-    categoria: string;
+    categoriaId: string;
     marca: string | null;
     modelo: string | null;
-    unidadeMedida: string;
+    unidadeMedidaId: string;
     fotoUrl: string | null;
   };
 }) {
   const [state, formAction, pending] = useActionState(action, {});
+
+  const categoriasItems = Object.fromEntries(categorias.map((c) => [c.id, c.nome]));
+  const unidadesItems = Object.fromEntries(unidadesMedida.map((u) => [u.id, u.nome]));
 
   return (
     <form action={formAction} className="max-w-md space-y-6">
@@ -43,15 +52,19 @@ export function ProdutoForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="categoria" className={labelClass}>Categoria</Label>
-        <Input
-          id="categoria"
-          name="categoria"
-          required
-          placeholder="Ex.: mesas de som, caixas, microfones"
-          defaultValue={defaultValues?.categoria}
-          className={inputClass}
-        />
+        <Label htmlFor="categoriaId" className={labelClass}>Categoria</Label>
+        <Select name="categoriaId" defaultValue={defaultValues?.categoriaId} items={categoriasItems}>
+          <SelectTrigger id="categoriaId" className={`w-full ${inputClass}`}>
+            <SelectValue placeholder="Selecione a categoria" />
+          </SelectTrigger>
+          <SelectContent>
+            {categorias.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.nome}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="grid grid-cols-2 gap-5">
@@ -66,19 +79,17 @@ export function ProdutoForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="unidadeMedida" className={labelClass}>Unidade de Medida</Label>
-        <Select
-          name="unidadeMedida"
-          defaultValue={defaultValues?.unidadeMedida ?? "unidade"}
-          items={{ unidade: "Unidade", metro: "Metro", kit: "Kit" }}
-        >
-          <SelectTrigger id="unidadeMedida" className={`w-full ${inputClass}`}>
-            <SelectValue />
+        <Label htmlFor="unidadeMedidaId" className={labelClass}>Unidade de Medida</Label>
+        <Select name="unidadeMedidaId" defaultValue={defaultValues?.unidadeMedidaId} items={unidadesItems}>
+          <SelectTrigger id="unidadeMedidaId" className={`w-full ${inputClass}`}>
+            <SelectValue placeholder="Selecione a unidade" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="unidade">Unidade</SelectItem>
-            <SelectItem value="metro">Metro</SelectItem>
-            <SelectItem value="kit">Kit</SelectItem>
+            {unidadesMedida.map((u) => (
+              <SelectItem key={u.id} value={u.id}>
+                {u.nome}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
