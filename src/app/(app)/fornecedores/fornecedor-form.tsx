@@ -63,7 +63,7 @@ export function FornecedorForm({
         <Input id="email" name="email" type="email" defaultValue={defaultValues?.email ?? ""} />
       </div>
 
-      {state.erro && <p className="text-sm text-destructive">{state.erro}</p>}
+      {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}
       <Button type="submit" disabled={pending}>
         {pending ? "Salvando..." : "Salvar"}
       </Button>

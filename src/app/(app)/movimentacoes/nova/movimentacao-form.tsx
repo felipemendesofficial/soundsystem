@@ -237,7 +237,7 @@ export function MovimentacaoForm({
         <Input id="observacao" name="observacao" />
       </div>
 
-      {state.erro && <p className="text-sm text-destructive">{state.erro}</p>}
+      {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}
       <Button type="submit" disabled={pending}>
         {pending ? "Registrando..." : "Registrar Movimento"}
       </Button>

@@ -41,7 +41,7 @@ export default async function KardexPage({
   const mostrarCusto = podeVerCusto(perfil);
 
   const [produto, depositos, movimentacoes] = await Promise.all([
-    db.produto.findUnique({ where: { id: produtoId } }),
+    db.produto.findUnique({ where: { id: produtoId }, include: { categoria: true } }),
     db.deposito.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
     db.movimentacao.findMany({
       where: { produtoId, ...(depositoId ? { depositoId } : {}) },
@@ -58,7 +58,7 @@ export default async function KardexPage({
         <h1 className="text-2xl font-semibold">
           Ficha Kardex — {produto.sku} · {produto.nome}
         </h1>
-        <p className="text-muted-foreground">{produto.categoria}</p>
+        <p className="text-muted-foreground">{produto.categoria.nome}</p>
       </div>
 
       <DepositoFilter depositos={depositos} />

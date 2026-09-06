@@ -9,11 +9,10 @@ import { db } from "@/lib/db";
 const schema = z.object({
   sku: z.string().trim().min(1, "Informe o SKU."),
   nome: z.string().trim().min(1, "Informe o nome."),
-  categoria: z.string().trim().min(1, "Informe a categoria."),
+  categoriaId: z.string().trim().min(1, "Selecione a categoria."),
   marca: z.string().trim().optional(),
   modelo: z.string().trim().optional(),
-  estadoConservacao: z.enum(["excelente", "bom", "regular", "para_reparo"]),
-  unidadeMedida: z.enum(["unidade", "metro", "kit"]),
+  unidadeMedidaId: z.string().trim().min(1, "Selecione a unidade de medida."),
   fotoUrl: z.string().trim().optional(),
 });
 
@@ -29,11 +28,10 @@ function toData(formData: FormData) {
   return schema.safeParse({
     sku: formData.get("sku"),
     nome: formData.get("nome"),
-    categoria: formData.get("categoria"),
+    categoriaId: formData.get("categoriaId"),
     marca: formData.get("marca"),
     modelo: formData.get("modelo"),
-    estadoConservacao: formData.get("estadoConservacao"),
-    unidadeMedida: formData.get("unidadeMedida"),
+    unidadeMedidaId: formData.get("unidadeMedidaId"),
     fotoUrl: formData.get("fotoUrl"),
   });
 }
@@ -48,11 +46,11 @@ export async function criarProduto(_prev: ProdutoFormState, formData: FormData):
       data: {
         sku: parsed.data.sku,
         nome: parsed.data.nome,
-        categoria: parsed.data.categoria,
+        categoriaId: parsed.data.categoriaId,
         marca: parsed.data.marca || null,
         modelo: parsed.data.modelo || null,
-        estadoConservacao: parsed.data.estadoConservacao,
-        unidadeMedida: parsed.data.unidadeMedida,
+        estadoConservacao: "bom",
+        unidadeMedidaId: parsed.data.unidadeMedidaId,
         fotoUrl: parsed.data.fotoUrl || null,
       },
     });
@@ -79,11 +77,10 @@ export async function atualizarProduto(
       data: {
         sku: parsed.data.sku,
         nome: parsed.data.nome,
-        categoria: parsed.data.categoria,
+        categoriaId: parsed.data.categoriaId,
         marca: parsed.data.marca || null,
         modelo: parsed.data.modelo || null,
-        estadoConservacao: parsed.data.estadoConservacao,
-        unidadeMedida: parsed.data.unidadeMedida,
+        unidadeMedidaId: parsed.data.unidadeMedidaId,
         fotoUrl: parsed.data.fotoUrl || null,
       },
     });

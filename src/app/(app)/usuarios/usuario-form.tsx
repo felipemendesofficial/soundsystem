@@ -97,7 +97,7 @@ export function UsuarioForm({
         <Label htmlFor="ativo">Usuário ativo</Label>
       </div>
 
-      {state.erro && <p className="text-sm text-destructive">{state.erro}</p>}
+      {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}
       <Button type="submit" disabled={pending}>
         {pending ? "Salvando..." : "Salvar"}
       </Button>

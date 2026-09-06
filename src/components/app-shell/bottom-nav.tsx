@@ -12,16 +12,13 @@ import {
   Users,
   Warehouse,
   UserCog,
+  Tags,
+  Ruler,
   LogOut,
 } from "lucide-react";
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { cn } from "@/lib/utils";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Dialog, DialogPortal, DialogOverlay, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { signOutAction } from "@/lib/actions/auth-actions";
 
 const NAV_ITEMS = [
@@ -31,7 +28,7 @@ const NAV_ITEMS = [
   { href: "/estoque", label: "Estoque", icon: ClipboardList },
 ];
 
-const MAIS_ROUTES = ["/fornecedores", "/clientes", "/depositos", "/usuarios"];
+const MAIS_ROUTES = ["/fornecedores", "/clientes", "/depositos", "/categorias", "/unidades-medida", "/usuarios"];
 
 function NavLink({
   href,
@@ -75,8 +72,8 @@ export function BottomNav({ isAdmin }: { isAdmin: boolean }) {
         />
       ))}
 
-      <DropdownMenu>
-        <DropdownMenuTrigger
+      <Dialog>
+        <DialogTrigger
           render={
             <button
               type="button"
@@ -89,33 +86,70 @@ export function BottomNav({ isAdmin }: { isAdmin: boolean }) {
         >
           <MoreHorizontal className={cn("size-5", maisAtivo && "text-primary")} />
           Mais
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" side="top" sideOffset={8}>
-          <DropdownMenuItem render={<Link href="/fornecedores" />}>
-            <Truck />
-            Fornecedores
-          </DropdownMenuItem>
-          <DropdownMenuItem render={<Link href="/clientes" />}>
-            <Users />
-            Clientes
-          </DropdownMenuItem>
-          <DropdownMenuItem render={<Link href="/depositos" />}>
-            <Warehouse />
-            Depósitos
-          </DropdownMenuItem>
-          {isAdmin && (
-            <DropdownMenuItem render={<Link href="/usuarios" />}>
-              <UserCog />
-              Usuários
-            </DropdownMenuItem>
-          )}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onClick={() => signOutAction()}>
-            <LogOut />
-            Sair
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </DialogTrigger>
+
+        <DialogPortal>
+          <DialogOverlay />
+          <DialogPrimitive.Popup className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[80vh] w-full max-w-[400px] flex-col rounded-t-2xl bg-card pb-[calc(env(safe-area-inset-bottom)+12px)] shadow-lg outline-none duration-150 data-open:animate-in data-open:slide-in-from-bottom data-closed:animate-out data-closed:slide-out-to-bottom">
+            <div className="flex justify-center pt-2.5 pb-1">
+              <span className="h-1 w-9 rounded-full bg-border" />
+            </div>
+            <div className="grid grid-cols-2 gap-2.5 overflow-y-auto px-[18px] pt-3 pb-4">
+              <DialogClose
+                render={<Link href="/fornecedores" />}
+                className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
+              >
+                <Truck className="size-[18px] flex-none text-primary" />
+                <span className="text-[13.5px] font-medium">Fornecedores</span>
+              </DialogClose>
+              <DialogClose
+                render={<Link href="/clientes" />}
+                className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
+              >
+                <Users className="size-[18px] flex-none text-primary" />
+                <span className="text-[13.5px] font-medium">Clientes</span>
+              </DialogClose>
+              <DialogClose
+                render={<Link href="/depositos" />}
+                className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
+              >
+                <Warehouse className="size-[18px] flex-none text-primary" />
+                <span className="text-[13.5px] font-medium">Depósitos</span>
+              </DialogClose>
+              <DialogClose
+                render={<Link href="/categorias" />}
+                className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
+              >
+                <Tags className="size-[18px] flex-none text-primary" />
+                <span className="text-[13.5px] font-medium">Categorias</span>
+              </DialogClose>
+              <DialogClose
+                render={<Link href="/unidades-medida" />}
+                className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
+              >
+                <Ruler className="size-[18px] flex-none text-primary" />
+                <span className="text-[13.5px] font-medium">Unidades de Medida</span>
+              </DialogClose>
+              {isAdmin && (
+                <DialogClose
+                  render={<Link href="/usuarios" />}
+                  className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
+                >
+                  <UserCog className="size-[18px] flex-none text-primary" />
+                  <span className="text-[13.5px] font-medium">Usuários</span>
+                </DialogClose>
+              )}
+              <DialogClose
+                onClick={() => signOutAction()}
+                className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left text-destructive active:bg-destructive/10"
+              >
+                <LogOut className="size-[18px] flex-none" />
+                <span className="text-[13.5px] font-medium">Sair</span>
+              </DialogClose>
+            </div>
+          </DialogPrimitive.Popup>
+        </DialogPortal>
+      </Dialog>
     </div>
   );
 }

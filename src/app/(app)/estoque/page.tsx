@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { podeVerCusto } from "@/lib/permissions";
-import { DataTable } from "@/components/data-table";
+import { EstoqueLista, type ItemEstoque } from "@/components/estoque-lista";
 import { DepositoFilter } from "@/components/deposito-filter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -34,6 +33,20 @@ export default async function EstoquePage({
 
   const valorTotalGeral = itens.reduce((acc, item) => acc + Number(item.valorTotalSaldo), 0);
 
+  const itensLista: ItemEstoque[] = itens.map((i) => ({
+    id: i.id,
+    produtoId: i.produtoId,
+    produtoNome: i.produto.nome,
+    depositoNome: i.deposito.nome,
+    saldo: formatarNumero(i.quantidadeSaldo),
+    ...(mostrarCusto
+      ? {
+          custoMedio: formatarMoeda(i.custoMedioAtual),
+          valorTotal: formatarMoeda(i.valorTotalSaldo),
+        }
+      : {}),
+  }));
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Posição de Estoque</h1>
@@ -52,35 +65,9 @@ export default async function EstoquePage({
         )}
       </div>
 
-      <DataTable
-        rows={itens}
-        getKey={(i) => i.id}
+      <EstoqueLista
+        itens={itensLista}
         emptyMessage="Nenhum item em estoque para o filtro selecionado."
-        columns={[
-          { header: "SKU", cell: (i) => i.produto.sku },
-          {
-            header: "Produto",
-            cell: (i) => (
-              <Link href={`/kardex/${i.produtoId}`} className="underline underline-offset-2">
-                {i.produto.nome}
-              </Link>
-            ),
-          },
-          { header: "Depósito", cell: (i) => i.deposito.nome },
-          { header: "Saldo (Qtd.)", cell: (i) => formatarNumero(i.quantidadeSaldo) },
-          ...(mostrarCusto
-            ? [
-                {
-                  header: "Custo Médio",
-                  cell: (i: (typeof itens)[number]) => formatarMoeda(i.custoMedioAtual),
-                },
-                {
-                  header: "Valor Total",
-                  cell: (i: (typeof itens)[number]) => formatarMoeda(i.valorTotalSaldo),
-                },
-              ]
-            : []),
-        ]}
       />
     </div>
   );

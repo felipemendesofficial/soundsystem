@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, Plus, ClipboardList, Package, Truck, Users, Warehouse, UserCog } from "lucide-react";
+import { ChevronRight, Plus, ClipboardList, Package, Truck, Users, Warehouse, UserCog, Tags, Ruler } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { podeVerCusto, podeGerenciarUsuarios } from "@/lib/permissions";
@@ -9,17 +9,14 @@ export default async function HomePage() {
   const session = await auth();
   const perfil = session!.user.perfil;
 
-  const [totalProdutos, totalDepositos] = await Promise.all([
-    db.produto.count({ where: { ativo: true } }),
-    db.deposito.count({ where: { ativo: true } }),
-  ]);
+  const totalProdutos = await db.produto.count({ where: { ativo: true } });
 
   let valorTotalEstoque: string | null = null;
   if (podeVerCusto(perfil)) {
     const agregado = await db.produtoEstoque.aggregate({
       _sum: { valorTotalSaldo: true },
     });
-    valorTotalEstoque = (agregado._sum.valorTotalSaldo ?? 0).toLocaleString("pt-BR", {
+    valorTotalEstoque = Number(agregado._sum.valorTotalSaldo ?? 0).toLocaleString("pt-BR", {
       style: "currency",
       currency: "BRL",
     });
@@ -27,7 +24,6 @@ export default async function HomePage() {
 
   const stats = [
     { label: "Produtos ativos", value: String(totalProdutos), dot: "bg-brand-green" },
-    { label: "Depósitos ativos", value: String(totalDepositos), dot: "bg-brand-green" },
     ...(valorTotalEstoque !== null
       ? [{ label: "Valor total em estoque", value: valorTotalEstoque, dot: "bg-primary", warn: true }]
       : []),
@@ -59,6 +55,8 @@ export default async function HomePage() {
     { href: "/fornecedores", titulo: "Fornecedores", icon: Truck },
     { href: "/clientes", titulo: "Clientes", icon: Users },
     { href: "/depositos", titulo: "Depósitos", icon: Warehouse },
+    { href: "/categorias", titulo: "Categorias", icon: Tags },
+    { href: "/unidades-medida", titulo: "Unidades de Medida", icon: Ruler },
     ...(podeGerenciarUsuarios(perfil) ? [{ href: "/usuarios", titulo: "Usuários", icon: UserCog }] : []),
   ];
 
@@ -75,7 +73,7 @@ export default async function HomePage() {
         {stats.map((stat) => (
           <div
             key={stat.label}
-            className="relative w-[140px] flex-none rounded-[14px] border border-border bg-card p-3.5 pb-4"
+            className="relative w-fit min-w-[140px] flex-none rounded-[14px] border border-border bg-card p-3.5 pb-4"
           >
             <div className={cn("absolute right-2.5 top-2.5 size-2 rounded-full", stat.dot)} />
             <div className="mb-2.5 font-mono text-[9.5px] uppercase tracking-[0.08em] text-text-faint">
@@ -83,7 +81,7 @@ export default async function HomePage() {
             </div>
             <div
               className={cn(
-                "font-heading text-[32px] font-extrabold leading-none",
+                "font-heading text-[32px] font-extrabold leading-none whitespace-nowrap",
                 stat.warn && "text-primary"
               )}
             >
