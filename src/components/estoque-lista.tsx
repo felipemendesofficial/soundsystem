@@ -37,7 +37,7 @@ export function EstoqueLista({
 
       {filtrados.length === 0 ? (
         <p className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
-          {termo ? "Nenhum produto encontrado para a busca." : emptyMessage}
+          {termo ? `Nenhum produto encontrado para "${busca.trim()}".` : emptyMessage}
         </p>
       ) : (
         <ul className="space-y-2">

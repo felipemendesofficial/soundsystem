@@ -142,18 +142,3 @@
   }
 }
 
-@layer components {
-  .barcode-divider {
-    height: 14px;
-    background-image: repeating-linear-gradient(
-      90deg,
-      var(--shell) 0px, var(--shell) 2px,
-      transparent 2px, transparent 5px,
-      var(--shell) 5px, var(--shell) 6px,
-      transparent 6px, transparent 10px,
-      var(--shell) 10px, var(--shell) 13px,
-      transparent 13px, transparent 16px
-    );
-    opacity: 0.85;
-  }
-}

@@ -27,7 +27,7 @@ export default function LoginPage() {
             <Input id="senha" name="senha" type="password" required autoComplete="current-password" />
           </div>
 
-          {state.erro && <p className="text-sm text-destructive">{state.erro}</p>}
+          {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}
 
           <Button type="submit" className="w-full" disabled={pending}>
             {pending ? "Entrando..." : "Entrar"}

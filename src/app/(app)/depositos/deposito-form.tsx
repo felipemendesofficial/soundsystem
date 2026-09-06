@@ -27,7 +27,7 @@ export function DepositoForm({
         <Label htmlFor="endereco">Endereço</Label>
         <Input id="endereco" name="endereco" defaultValue={defaultValues?.endereco ?? ""} />
       </div>
-      {state.erro && <p className="text-sm text-destructive">{state.erro}</p>}
+      {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}
       <Button type="submit" disabled={pending}>
         {pending ? "Salvando..." : "Salvar"}
       </Button>

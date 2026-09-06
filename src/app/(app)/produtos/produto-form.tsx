@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { ProdutoFormState } from "./actions";
 
 type Action = (prevState: ProdutoFormState, formData: FormData) => Promise<ProdutoFormState>;
+
+const labelClass = "text-[15px] font-semibold";
+const inputClass = "h-11 px-3.5 text-base bg-card";
 
 export function ProdutoForm({
   action,
@@ -27,47 +31,48 @@ export function ProdutoForm({
   const [state, formAction, pending] = useActionState(action, {});
 
   return (
-    <form action={formAction} className="max-w-md space-y-4">
+    <form action={formAction} className="max-w-md space-y-6">
       <div className="space-y-2">
-        <Label htmlFor="sku">SKU</Label>
-        <Input id="sku" name="sku" required defaultValue={defaultValues?.sku} />
+        <Label htmlFor="sku" className={labelClass}>SKU</Label>
+        <Input id="sku" name="sku" required defaultValue={defaultValues?.sku} className={inputClass} />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="nome">Nome</Label>
-        <Input id="nome" name="nome" required defaultValue={defaultValues?.nome} />
+        <Label htmlFor="nome" className={labelClass}>Nome</Label>
+        <Input id="nome" name="nome" required defaultValue={defaultValues?.nome} className={inputClass} />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="categoria">Categoria</Label>
+        <Label htmlFor="categoria" className={labelClass}>Categoria</Label>
         <Input
           id="categoria"
           name="categoria"
           required
           placeholder="Ex.: mesas de som, caixas, microfones"
           defaultValue={defaultValues?.categoria}
+          className={inputClass}
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-5">
         <div className="space-y-2">
-          <Label htmlFor="marca">Marca</Label>
-          <Input id="marca" name="marca" defaultValue={defaultValues?.marca ?? ""} />
+          <Label htmlFor="marca" className={labelClass}>Marca</Label>
+          <Input id="marca" name="marca" defaultValue={defaultValues?.marca ?? ""} className={inputClass} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="modelo">Modelo</Label>
-          <Input id="modelo" name="modelo" defaultValue={defaultValues?.modelo ?? ""} />
+          <Label htmlFor="modelo" className={labelClass}>Modelo</Label>
+          <Input id="modelo" name="modelo" defaultValue={defaultValues?.modelo ?? ""} className={inputClass} />
         </div>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="unidadeMedida">Unidade de Medida</Label>
+        <Label htmlFor="unidadeMedida" className={labelClass}>Unidade de Medida</Label>
         <Select
           name="unidadeMedida"
           defaultValue={defaultValues?.unidadeMedida ?? "unidade"}
           items={{ unidade: "Unidade", metro: "Metro", kit: "Kit" }}
         >
-          <SelectTrigger id="unidadeMedida" className="w-full">
+          <SelectTrigger id="unidadeMedida" className={`w-full ${inputClass}`}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -79,14 +84,24 @@ export function ProdutoForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="fotoUrl">URL da Foto (opcional)</Label>
-        <Input id="fotoUrl" name="fotoUrl" defaultValue={defaultValues?.fotoUrl ?? ""} />
+        <Label htmlFor="fotoUrl" className={labelClass}>URL da Foto (opcional)</Label>
+        <Input id="fotoUrl" name="fotoUrl" defaultValue={defaultValues?.fotoUrl ?? ""} className={inputClass} />
       </div>
 
-      {state.erro && <p className="text-sm text-destructive">{state.erro}</p>}
-      <Button type="submit" disabled={pending}>
-        {pending ? "Salvando..." : "Salvar"}
-      </Button>
+      {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}
+      <div className="flex gap-3">
+        <Button type="submit" disabled={pending} className="h-11 px-7 text-base">
+          {pending ? "Salvando..." : "Salvar"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          render={<Link href="/produtos" />}
+          className="h-11 px-7 text-base"
+        >
+          Cancelar
+        </Button>
+      </div>
     </form>
   );
 }
