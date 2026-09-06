@@ -12,7 +12,6 @@ const schema = z.object({
   categoria: z.string().trim().min(1, "Informe a categoria."),
   marca: z.string().trim().optional(),
   modelo: z.string().trim().optional(),
-  estadoConservacao: z.enum(["excelente", "bom", "regular", "para_reparo"]),
   unidadeMedida: z.enum(["unidade", "metro", "kit"]),
   fotoUrl: z.string().trim().optional(),
 });
@@ -32,7 +31,6 @@ function toData(formData: FormData) {
     categoria: formData.get("categoria"),
     marca: formData.get("marca"),
     modelo: formData.get("modelo"),
-    estadoConservacao: formData.get("estadoConservacao"),
     unidadeMedida: formData.get("unidadeMedida"),
     fotoUrl: formData.get("fotoUrl"),
   });
@@ -51,7 +49,7 @@ export async function criarProduto(_prev: ProdutoFormState, formData: FormData):
         categoria: parsed.data.categoria,
         marca: parsed.data.marca || null,
         modelo: parsed.data.modelo || null,
-        estadoConservacao: parsed.data.estadoConservacao,
+        estadoConservacao: "bom",
         unidadeMedida: parsed.data.unidadeMedida,
         fotoUrl: parsed.data.fotoUrl || null,
       },
@@ -82,7 +80,6 @@ export async function atualizarProduto(
         categoria: parsed.data.categoria,
         marca: parsed.data.marca || null,
         modelo: parsed.data.modelo || null,
-        estadoConservacao: parsed.data.estadoConservacao,
         unidadeMedida: parsed.data.unidadeMedida,
         fotoUrl: parsed.data.fotoUrl || null,
       },

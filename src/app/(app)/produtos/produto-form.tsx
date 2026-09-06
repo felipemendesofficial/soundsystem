@@ -20,7 +20,6 @@ export function ProdutoForm({
     categoria: string;
     marca: string | null;
     modelo: string | null;
-    estadoConservacao: string;
     unidadeMedida: string;
     fotoUrl: string | null;
   };
@@ -59,25 +58,6 @@ export function ProdutoForm({
           <Label htmlFor="modelo">Modelo</Label>
           <Input id="modelo" name="modelo" defaultValue={defaultValues?.modelo ?? ""} />
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="estadoConservacao">Estado de Conservação</Label>
-        <Select
-          name="estadoConservacao"
-          defaultValue={defaultValues?.estadoConservacao ?? "bom"}
-          items={{ excelente: "Excelente", bom: "Bom", regular: "Regular", para_reparo: "Para reparo" }}
-        >
-          <SelectTrigger id="estadoConservacao" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="excelente">Excelente</SelectItem>
-            <SelectItem value="bom">Bom</SelectItem>
-            <SelectItem value="regular">Regular</SelectItem>
-            <SelectItem value="para_reparo">Para reparo</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       <div className="space-y-2">
