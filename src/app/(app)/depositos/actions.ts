@@ -5,10 +5,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { normalizarTexto } from "@/lib/texto";
 
 const schema = z.object({
-  nome: z.string().trim().min(1, "Informe o nome."),
-  endereco: z.string().trim().optional(),
+  nome: z.string().trim().min(1, "Informe o nome.").transform(normalizarTexto),
+  endereco: z.string().trim().transform(normalizarTexto).optional(),
 });
 
 export type DepositoFormState = { erro?: string };
