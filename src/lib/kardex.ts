@@ -2,12 +2,32 @@ import { db } from "@/lib/db";
 import { Prisma, TipoMovimento, type Movimentacao } from "@/generated/prisma/client";
 
 export class SaldoInsuficienteError extends Error {
-  constructor(disponivel: Prisma.Decimal, solicitado: Prisma.Decimal) {
+  produtoId: string;
+  disponivel: Prisma.Decimal;
+  solicitado: Prisma.Decimal;
+
+  constructor(produtoId: string, disponivel: Prisma.Decimal, solicitado: Prisma.Decimal) {
     super(
       `Saldo insuficiente: disponível ${disponivel.toString()}, solicitado ${solicitado.toString()}.`
     );
     this.name = "SaldoInsuficienteError";
+    this.produtoId = produtoId;
+    this.disponivel = disponivel;
+    this.solicitado = solicitado;
   }
+}
+
+/**
+ * Monta uma mensagem de erro amigável identificando o produto sem saldo —
+ * útil em lançamentos com vários itens, onde não fica óbvio qual item falhou.
+ */
+export async function mensagemSaldoInsuficiente(error: SaldoInsuficienteError): Promise<string> {
+  const produto = await db.produto.findUnique({
+    where: { id: error.produtoId },
+    select: { nome: true, sku: true },
+  });
+  const identificacao = produto ? `"${produto.nome} — ${produto.sku}"` : "produto";
+  return `Saldo insuficiente para ${identificacao}: disponível ${error.disponivel.toString()}, solicitado ${error.solicitado.toString()}.`;
 }
 
 type TipoMovimentoEntrada = Extract<
@@ -75,10 +95,14 @@ export type RegistrarEntradaInput = {
 };
 
 /**
- * Registra uma entrada de estoque e recalcula o custo médio ponderado móvel:
- * novoCustoMedio = (saldoAtualValor + valorEntrada) / (saldoAtualQtd + qtdEntrada)
+ * Mesma lógica de `registrarEntrada`, mas recebendo a transação de fora —
+ * permite agrupar várias entradas (ex.: uma Nova Movimentação com vários
+ * produtos) na mesma transação atômica, tudo-ou-nada.
  */
-export async function registrarEntrada(input: RegistrarEntradaInput): Promise<Movimentacao> {
+export async function registrarEntradaNaTransacao(
+  tx: Prisma.TransactionClient,
+  input: RegistrarEntradaInput
+): Promise<Movimentacao> {
   const quantidadeEntrada = paraDecimal(input.quantidade);
   const custoUnitarioEntrada = paraDecimal(input.custoUnitario);
 
@@ -89,43 +113,49 @@ export async function registrarEntrada(input: RegistrarEntradaInput): Promise<Mo
     throw new Error("Custo unitário não pode ser negativo.");
   }
 
-  return db.$transaction(async (tx) => {
-    const estoque = await obterOuCriarEstoqueTravado(tx, input.produtoId, input.depositoId);
+  const estoque = await obterOuCriarEstoqueTravado(tx, input.produtoId, input.depositoId);
 
-    const novaQuantidade = estoque.quantidadeSaldo.plus(quantidadeEntrada);
-    const novoValorTotal = estoque.quantidadeSaldo
-      .times(estoque.custoMedioAtual)
-      .plus(quantidadeEntrada.times(custoUnitarioEntrada));
-    const novoCustoMedio = novaQuantidade.isZero()
-      ? new Prisma.Decimal(0)
-      : novoValorTotal.dividedBy(novaQuantidade);
+  const novaQuantidade = estoque.quantidadeSaldo.plus(quantidadeEntrada);
+  const novoValorTotal = estoque.quantidadeSaldo
+    .times(estoque.custoMedioAtual)
+    .plus(quantidadeEntrada.times(custoUnitarioEntrada));
+  const novoCustoMedio = novaQuantidade.isZero()
+    ? new Prisma.Decimal(0)
+    : novoValorTotal.dividedBy(novaQuantidade);
 
-    await tx.produtoEstoque.update({
-      where: { id: estoque.id },
-      data: {
-        quantidadeSaldo: novaQuantidade,
-        custoMedioAtual: novoCustoMedio,
-        valorTotalSaldo: novoValorTotal,
-      },
-    });
-
-    return tx.movimentacao.create({
-      data: {
-        produtoId: input.produtoId,
-        depositoId: input.depositoId,
-        tipoMovimento: input.tipoMovimento,
-        dataMovimento: input.dataMovimento ?? new Date(),
-        quantidade: quantidadeEntrada,
-        custoUnitario: custoUnitarioEntrada,
-        custoMedioApos: novoCustoMedio,
-        saldoQuantidadeApos: novaQuantidade,
-        saldoValorApos: novoValorTotal,
-        fornecedorId: input.fornecedorId,
-        usuarioId: input.usuarioId,
-        observacao: input.observacao,
-      },
-    });
+  await tx.produtoEstoque.update({
+    where: { id: estoque.id },
+    data: {
+      quantidadeSaldo: novaQuantidade,
+      custoMedioAtual: novoCustoMedio,
+      valorTotalSaldo: novoValorTotal,
+    },
   });
+
+  return tx.movimentacao.create({
+    data: {
+      produtoId: input.produtoId,
+      depositoId: input.depositoId,
+      tipoMovimento: input.tipoMovimento,
+      dataMovimento: input.dataMovimento ?? new Date(),
+      quantidade: quantidadeEntrada,
+      custoUnitario: custoUnitarioEntrada,
+      custoMedioApos: novoCustoMedio,
+      saldoQuantidadeApos: novaQuantidade,
+      saldoValorApos: novoValorTotal,
+      fornecedorId: input.fornecedorId,
+      usuarioId: input.usuarioId,
+      observacao: input.observacao,
+    },
+  });
+}
+
+/**
+ * Registra uma entrada de estoque e recalcula o custo médio ponderado móvel:
+ * novoCustoMedio = (saldoAtualValor + valorEntrada) / (saldoAtualQtd + qtdEntrada)
+ */
+export async function registrarEntrada(input: RegistrarEntradaInput): Promise<Movimentacao> {
+  return db.$transaction((tx) => registrarEntradaNaTransacao(tx, input));
 }
 
 export type RegistrarSaidaInput = {
@@ -159,7 +189,7 @@ export async function registrarSaidaNaTransacao(
   const estoque = await obterOuCriarEstoqueTravado(tx, input.produtoId, input.depositoId);
 
   if (quantidadeSaida.greaterThan(estoque.quantidadeSaldo)) {
-    throw new SaldoInsuficienteError(estoque.quantidadeSaldo, quantidadeSaida);
+    throw new SaldoInsuficienteError(input.produtoId, estoque.quantidadeSaldo, quantidadeSaida);
   }
 
   const novaQuantidade = estoque.quantidadeSaldo.minus(quantidadeSaida);
@@ -212,13 +242,12 @@ export type RegistrarTransferenciaInput = {
 };
 
 /**
- * Transferência entre depósitos: gera dois lançamentos na mesma transação
- * (saída na origem + entrada no destino), preservando o custo médio de origem.
- * As duas linhas de produto_estoque envolvidas são travadas em ordem
- * determinística (por depositoId) para evitar deadlock quando duas
- * transferências em sentidos opostos acontecem ao mesmo tempo.
+ * Mesma lógica de `registrarTransferencia`, mas recebendo a transação de
+ * fora — permite agrupar várias transferências (ex.: uma Nova Movimentação
+ * com vários produtos) na mesma transação atômica, tudo-ou-nada.
  */
-export async function registrarTransferencia(
+export async function registrarTransferenciaNaTransacao(
+  tx: Prisma.TransactionClient,
   input: RegistrarTransferenciaInput
 ): Promise<{ saida: Movimentacao; entrada: Movimentacao }> {
   const quantidade = paraDecimal(input.quantidade);
@@ -230,75 +259,86 @@ export async function registrarTransferencia(
     throw new Error("Depósito de origem e destino devem ser diferentes.");
   }
 
-  return db.$transaction(async (tx) => {
-    const depositosEmOrdem = [input.depositoOrigemId, input.depositoDestinoId].sort();
-    const travados = new Map<string, EstoqueTravado>();
-    for (const depositoId of depositosEmOrdem) {
-      travados.set(depositoId, await obterOuCriarEstoqueTravado(tx, input.produtoId, depositoId));
-    }
+  const depositosEmOrdem = [input.depositoOrigemId, input.depositoDestinoId].sort();
+  const travados = new Map<string, EstoqueTravado>();
+  for (const depositoId of depositosEmOrdem) {
+    travados.set(depositoId, await obterOuCriarEstoqueTravado(tx, input.produtoId, depositoId));
+  }
 
-    const estoqueOrigem = travados.get(input.depositoOrigemId)!;
-    const estoqueDestino = travados.get(input.depositoDestinoId)!;
+  const estoqueOrigem = travados.get(input.depositoOrigemId)!;
+  const estoqueDestino = travados.get(input.depositoDestinoId)!;
 
-    if (quantidade.greaterThan(estoqueOrigem.quantidadeSaldo)) {
-      throw new SaldoInsuficienteError(estoqueOrigem.quantidadeSaldo, quantidade);
-    }
+  if (quantidade.greaterThan(estoqueOrigem.quantidadeSaldo)) {
+    throw new SaldoInsuficienteError(input.produtoId, estoqueOrigem.quantidadeSaldo, quantidade);
+  }
 
-    const custoMedioOrigem = estoqueOrigem.custoMedioAtual;
-    const novaQuantidadeOrigem = estoqueOrigem.quantidadeSaldo.minus(quantidade);
-    const novoValorOrigem = novaQuantidadeOrigem.times(custoMedioOrigem);
+  const custoMedioOrigem = estoqueOrigem.custoMedioAtual;
+  const novaQuantidadeOrigem = estoqueOrigem.quantidadeSaldo.minus(quantidade);
+  const novoValorOrigem = novaQuantidadeOrigem.times(custoMedioOrigem);
 
-    await tx.produtoEstoque.update({
-      where: { id: estoqueOrigem.id },
-      data: { quantidadeSaldo: novaQuantidadeOrigem, valorTotalSaldo: novoValorOrigem },
-    });
-
-    const saida = await tx.movimentacao.create({
-      data: {
-        produtoId: input.produtoId,
-        depositoId: input.depositoOrigemId,
-        tipoMovimento: TipoMovimento.transferencia_saida,
-        quantidade,
-        custoMedioApos: custoMedioOrigem,
-        saldoQuantidadeApos: novaQuantidadeOrigem,
-        saldoValorApos: novoValorOrigem,
-        usuarioId: input.usuarioId,
-        observacao: input.observacao,
-      },
-    });
-
-    const novaQuantidadeDestino = estoqueDestino.quantidadeSaldo.plus(quantidade);
-    const novoValorTotalDestino = estoqueDestino.quantidadeSaldo
-      .times(estoqueDestino.custoMedioAtual)
-      .plus(quantidade.times(custoMedioOrigem));
-    const novoCustoMedioDestino = novaQuantidadeDestino.isZero()
-      ? new Prisma.Decimal(0)
-      : novoValorTotalDestino.dividedBy(novaQuantidadeDestino);
-
-    await tx.produtoEstoque.update({
-      where: { id: estoqueDestino.id },
-      data: {
-        quantidadeSaldo: novaQuantidadeDestino,
-        custoMedioAtual: novoCustoMedioDestino,
-        valorTotalSaldo: novoValorTotalDestino,
-      },
-    });
-
-    const entrada = await tx.movimentacao.create({
-      data: {
-        produtoId: input.produtoId,
-        depositoId: input.depositoDestinoId,
-        tipoMovimento: TipoMovimento.transferencia_entrada,
-        quantidade,
-        custoUnitario: custoMedioOrigem,
-        custoMedioApos: novoCustoMedioDestino,
-        saldoQuantidadeApos: novaQuantidadeDestino,
-        saldoValorApos: novoValorTotalDestino,
-        usuarioId: input.usuarioId,
-        observacao: input.observacao,
-      },
-    });
-
-    return { saida, entrada };
+  await tx.produtoEstoque.update({
+    where: { id: estoqueOrigem.id },
+    data: { quantidadeSaldo: novaQuantidadeOrigem, valorTotalSaldo: novoValorOrigem },
   });
+
+  const saida = await tx.movimentacao.create({
+    data: {
+      produtoId: input.produtoId,
+      depositoId: input.depositoOrigemId,
+      tipoMovimento: TipoMovimento.transferencia_saida,
+      quantidade,
+      custoMedioApos: custoMedioOrigem,
+      saldoQuantidadeApos: novaQuantidadeOrigem,
+      saldoValorApos: novoValorOrigem,
+      usuarioId: input.usuarioId,
+      observacao: input.observacao,
+    },
+  });
+
+  const novaQuantidadeDestino = estoqueDestino.quantidadeSaldo.plus(quantidade);
+  const novoValorTotalDestino = estoqueDestino.quantidadeSaldo
+    .times(estoqueDestino.custoMedioAtual)
+    .plus(quantidade.times(custoMedioOrigem));
+  const novoCustoMedioDestino = novaQuantidadeDestino.isZero()
+    ? new Prisma.Decimal(0)
+    : novoValorTotalDestino.dividedBy(novaQuantidadeDestino);
+
+  await tx.produtoEstoque.update({
+    where: { id: estoqueDestino.id },
+    data: {
+      quantidadeSaldo: novaQuantidadeDestino,
+      custoMedioAtual: novoCustoMedioDestino,
+      valorTotalSaldo: novoValorTotalDestino,
+    },
+  });
+
+  const entrada = await tx.movimentacao.create({
+    data: {
+      produtoId: input.produtoId,
+      depositoId: input.depositoDestinoId,
+      tipoMovimento: TipoMovimento.transferencia_entrada,
+      quantidade,
+      custoUnitario: custoMedioOrigem,
+      custoMedioApos: novoCustoMedioDestino,
+      saldoQuantidadeApos: novaQuantidadeDestino,
+      saldoValorApos: novoValorTotalDestino,
+      usuarioId: input.usuarioId,
+      observacao: input.observacao,
+    },
+  });
+
+  return { saida, entrada };
+}
+
+/**
+ * Transferência entre depósitos: gera dois lançamentos na mesma transação
+ * (saída na origem + entrada no destino), preservando o custo médio de origem.
+ * As duas linhas de produto_estoque envolvidas são travadas em ordem
+ * determinística (por depositoId) para evitar deadlock quando duas
+ * transferências em sentidos opostos acontecem ao mesmo tempo.
+ */
+export async function registrarTransferencia(
+  input: RegistrarTransferenciaInput
+): Promise<{ saida: Movimentacao; entrada: Movimentacao }> {
+  return db.$transaction((tx) => registrarTransferenciaNaTransacao(tx, input));
 }

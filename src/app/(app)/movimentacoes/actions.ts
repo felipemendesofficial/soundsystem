@@ -4,10 +4,12 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
 import {
-  registrarEntrada,
-  registrarSaida,
-  registrarTransferencia,
+  mensagemSaldoInsuficiente,
+  registrarEntradaNaTransacao,
+  registrarSaidaNaTransacao,
+  registrarTransferenciaNaTransacao,
   SaldoInsuficienteError,
 } from "@/lib/kardex";
 import { normalizarTexto } from "@/lib/texto";
@@ -17,30 +19,60 @@ export type MovimentacaoFormState = { erro?: string };
 const ENTRADA_TIPOS = new Set(["compra", "devolucao_cliente", "ajuste_entrada"]);
 const SAIDA_TIPOS = new Set(["venda", "devolucao_fornecedor", "perda_avaria", "uso_interno", "ajuste_saida"]);
 
+function parseItens<T extends z.ZodRawShape>(itemSchema: z.ZodObject<T>) {
+  return z.string().transform((valor, ctx) => {
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(valor);
+    } catch {
+      ctx.addIssue({ code: "custom", message: "Itens inválidos." });
+      return z.NEVER;
+    }
+    const resultado = z.array(itemSchema).min(1, "Adicione ao menos um item.").safeParse(parsedJson);
+    if (!resultado.success) {
+      ctx.addIssue({ code: "custom", message: resultado.error.issues[0]?.message ?? "Itens inválidos." });
+      return z.NEVER;
+    }
+    return resultado.data;
+  });
+}
+
 const transferenciaSchema = z.object({
-  produtoId: z.string().min(1, "Selecione o produto."),
   depositoOrigemId: z.string().min(1, "Selecione o depósito de origem."),
   depositoDestinoId: z.string().min(1, "Selecione o depósito de destino."),
-  quantidade: z.coerce.number().positive("Quantidade deve ser maior que zero."),
   observacao: z.string().trim().transform(normalizarTexto).optional(),
+  itens: parseItens(
+    z.object({
+      produtoId: z.string().min(1, "Selecione o produto."),
+      quantidade: z.coerce.number().positive("Quantidade deve ser maior que zero."),
+    })
+  ),
 });
 
 const entradaSchema = z.object({
-  produtoId: z.string().min(1, "Selecione o produto."),
   depositoId: z.string().min(1, "Selecione o depósito."),
-  quantidade: z.coerce.number().positive("Quantidade deve ser maior que zero."),
-  custoUnitario: z.coerce.number().nonnegative("Custo não pode ser negativo."),
   fornecedorId: z.string().trim().optional(),
   observacao: z.string().trim().transform(normalizarTexto).optional(),
+  itens: parseItens(
+    z.object({
+      produtoId: z.string().min(1, "Selecione o produto."),
+      quantidade: z.coerce.number().positive("Quantidade deve ser maior que zero."),
+      custoUnitario: z.coerce.number().nonnegative("Custo não pode ser negativo."),
+    })
+  ),
 });
 
 const saidaSchema = z.object({
-  produtoId: z.string().min(1, "Selecione o produto."),
   depositoId: z.string().min(1, "Selecione o depósito."),
-  quantidade: z.coerce.number().positive("Quantidade deve ser maior que zero."),
-  precoVenda: z.string().trim().optional(),
   clienteId: z.string().trim().optional(),
   observacao: z.string().trim().transform(normalizarTexto).optional(),
+  itens: parseItens(
+    z.object({
+      produtoId: z.string().min(1, "Selecione o produto."),
+      quantidade: z.coerce.number().positive("Quantidade deve ser maior que zero."),
+      precoVenda: z.coerce.number().nonnegative("Preço não pode ser negativo.").optional(),
+    })
+  ),
 });
 
 export async function registrarMovimento(
@@ -61,67 +93,81 @@ export async function registrarMovimento(
   try {
     if (tipoMovimento === "transferencia") {
       const parsed = transferenciaSchema.safeParse({
-        produtoId: formData.get("produtoId"),
         depositoOrigemId: formData.get("depositoOrigemId"),
         depositoDestinoId: formData.get("depositoDestinoId"),
-        quantidade: formData.get("quantidade"),
         observacao: formData.get("observacao"),
+        itens: formData.get("itens"),
       });
       if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
-      await registrarTransferencia({ ...parsed.data, usuarioId });
+      await db.$transaction(async (tx) => {
+        for (const item of parsed.data.itens) {
+          await registrarTransferenciaNaTransacao(tx, {
+            produtoId: item.produtoId,
+            depositoOrigemId: parsed.data.depositoOrigemId,
+            depositoDestinoId: parsed.data.depositoDestinoId,
+            quantidade: item.quantidade,
+            usuarioId,
+            observacao: parsed.data.observacao,
+          });
+        }
+      });
     } else if (ENTRADA_TIPOS.has(tipoMovimento)) {
       const parsed = entradaSchema.safeParse({
-        produtoId: formData.get("produtoId"),
         depositoId: formData.get("depositoId"),
-        quantidade: formData.get("quantidade"),
-        custoUnitario: formData.get("custoUnitario"),
-        fornecedorId: formData.get("fornecedorId"),
+        fornecedorId: formData.get("fornecedorId") || undefined,
         observacao: formData.get("observacao"),
+        itens: formData.get("itens"),
       });
       if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
-      await registrarEntrada({
-        produtoId: parsed.data.produtoId,
-        depositoId: parsed.data.depositoId,
-        quantidade: parsed.data.quantidade,
-        custoUnitario: parsed.data.custoUnitario,
-        fornecedorId: parsed.data.fornecedorId || undefined,
-        observacao: parsed.data.observacao,
-        tipoMovimento: tipoMovimento as "compra" | "devolucao_cliente" | "ajuste_entrada",
-        usuarioId,
+      await db.$transaction(async (tx) => {
+        for (const item of parsed.data.itens) {
+          await registrarEntradaNaTransacao(tx, {
+            produtoId: item.produtoId,
+            depositoId: parsed.data.depositoId,
+            quantidade: item.quantidade,
+            custoUnitario: item.custoUnitario,
+            fornecedorId: parsed.data.fornecedorId || undefined,
+            observacao: parsed.data.observacao,
+            tipoMovimento: tipoMovimento as "compra" | "devolucao_cliente" | "ajuste_entrada",
+            usuarioId,
+          });
+        }
       });
     } else if (SAIDA_TIPOS.has(tipoMovimento)) {
       const parsed = saidaSchema.safeParse({
-        produtoId: formData.get("produtoId"),
         depositoId: formData.get("depositoId"),
-        quantidade: formData.get("quantidade"),
-        precoVenda: formData.get("precoVenda"),
-        clienteId: formData.get("clienteId"),
+        clienteId: formData.get("clienteId") || undefined,
         observacao: formData.get("observacao"),
+        itens: formData.get("itens"),
       });
       if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
-      await registrarSaida({
-        produtoId: parsed.data.produtoId,
-        depositoId: parsed.data.depositoId,
-        quantidade: parsed.data.quantidade,
-        precoVenda: parsed.data.precoVenda ? Number(parsed.data.precoVenda) : undefined,
-        clienteId: parsed.data.clienteId || undefined,
-        observacao: parsed.data.observacao,
-        tipoMovimento: tipoMovimento as
-          | "venda"
-          | "devolucao_fornecedor"
-          | "perda_avaria"
-          | "uso_interno"
-          | "ajuste_saida",
-        usuarioId,
+      await db.$transaction(async (tx) => {
+        for (const item of parsed.data.itens) {
+          await registrarSaidaNaTransacao(tx, {
+            produtoId: item.produtoId,
+            depositoId: parsed.data.depositoId,
+            quantidade: item.quantidade,
+            precoVenda: item.precoVenda,
+            clienteId: parsed.data.clienteId || undefined,
+            observacao: parsed.data.observacao,
+            tipoMovimento: tipoMovimento as
+              | "venda"
+              | "devolucao_fornecedor"
+              | "perda_avaria"
+              | "uso_interno"
+              | "ajuste_saida",
+            usuarioId,
+          });
+        }
       });
     } else {
       return { erro: "Tipo de movimento inválido." };
     }
   } catch (error) {
-    if (error instanceof SaldoInsuficienteError) return { erro: error.message };
+    if (error instanceof SaldoInsuficienteError) return { erro: await mensagemSaldoInsuficiente(error) };
     if (error instanceof Error) return { erro: error.message };
     throw error;
   }
