@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { podeLancarMovimentacao } from "@/lib/permissions";
-import { registrarSaidaNaTransacao, SaldoInsuficienteError } from "@/lib/kardex";
+import { mensagemSaldoInsuficiente, registrarSaidaNaTransacao, SaldoInsuficienteError } from "@/lib/kardex";
 import { normalizarTexto } from "@/lib/texto";
 
 export type OrdemServicoFormState = { erro?: string };
@@ -218,7 +218,7 @@ export async function concluirOrdemServico(
       });
     });
   } catch (error) {
-    if (error instanceof SaldoInsuficienteError) return { erro: error.message };
+    if (error instanceof SaldoInsuficienteError) return { erro: await mensagemSaldoInsuficiente(error) };
     if (error instanceof Error) return { erro: error.message };
     throw error;
   }
