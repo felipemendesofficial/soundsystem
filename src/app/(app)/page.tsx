@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, Plus, ClipboardList, ListChecks, Package, Wrench } from "lucide-react";
+import { ChevronRight, Plus, ClipboardList, ListChecks, Wrench } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { podeVerCusto } from "@/lib/permissions";
@@ -158,12 +158,6 @@ export default async function HomePage() {
       titulo: "Ordens de Serviço",
       descricao: "Acompanhar OS abertas",
       icon: ListChecks,
-    },
-    {
-      href: "/produtos",
-      titulo: "Produtos",
-      descricao: "Cadastro e ficha Kardex",
-      icon: Package,
     },
   ];
 
