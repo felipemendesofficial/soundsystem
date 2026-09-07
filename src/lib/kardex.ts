@@ -17,7 +17,7 @@ type TipoMovimentoEntrada = Extract<
 
 type TipoMovimentoSaida = Extract<
   TipoMovimento,
-  "venda" | "devolucao_fornecedor" | "perda_avaria" | "uso_interno" | "ajuste_saida"
+  "venda" | "devolucao_fornecedor" | "perda_avaria" | "uso_interno" | "ajuste_saida" | "os_saida"
 >;
 
 type EstoqueTravado = {
@@ -138,7 +138,60 @@ export type RegistrarSaidaInput = {
   usuarioId: string;
   observacao?: string;
   dataMovimento?: Date;
+  ordemServicoId?: string;
 };
+
+/**
+ * Mesma lógica de `registrarSaida`, mas recebendo a transação de fora —
+ * permite que quem chama (ex.: conclusão de uma Ordem de Serviço com vários
+ * itens) agrupe múltiplas saídas na mesma transação atômica, tudo-ou-nada.
+ */
+export async function registrarSaidaNaTransacao(
+  tx: Prisma.TransactionClient,
+  input: RegistrarSaidaInput
+): Promise<Movimentacao> {
+  const quantidadeSaida = paraDecimal(input.quantidade);
+
+  if (quantidadeSaida.lessThanOrEqualTo(0)) {
+    throw new Error("Quantidade da saída deve ser maior que zero.");
+  }
+
+  const estoque = await obterOuCriarEstoqueTravado(tx, input.produtoId, input.depositoId);
+
+  if (quantidadeSaida.greaterThan(estoque.quantidadeSaldo)) {
+    throw new SaldoInsuficienteError(estoque.quantidadeSaldo, quantidadeSaida);
+  }
+
+  const novaQuantidade = estoque.quantidadeSaldo.minus(quantidadeSaida);
+  const novoValorTotal = novaQuantidade.times(estoque.custoMedioAtual);
+
+  await tx.produtoEstoque.update({
+    where: { id: estoque.id },
+    data: {
+      quantidadeSaldo: novaQuantidade,
+      valorTotalSaldo: novoValorTotal,
+    },
+  });
+
+  return tx.movimentacao.create({
+    data: {
+      produtoId: input.produtoId,
+      depositoId: input.depositoId,
+      tipoMovimento: input.tipoMovimento,
+      dataMovimento: input.dataMovimento ?? new Date(),
+      quantidade: quantidadeSaida,
+      custoMedioApos: estoque.custoMedioAtual,
+      saldoQuantidadeApos: novaQuantidade,
+      saldoValorApos: novoValorTotal,
+      precoVenda:
+        input.precoVenda !== undefined ? paraDecimal(input.precoVenda) : undefined,
+      clienteId: input.clienteId,
+      usuarioId: input.usuarioId,
+      observacao: input.observacao,
+      ordemServicoId: input.ordemServicoId,
+    },
+  });
+}
 
 /**
  * Registra uma saída de estoque. O custo médio NÃO muda em saídas — a baixa
@@ -146,48 +199,7 @@ export type RegistrarSaidaInput = {
  * Bloqueia se a quantidade solicitada for maior que o saldo disponível.
  */
 export async function registrarSaida(input: RegistrarSaidaInput): Promise<Movimentacao> {
-  const quantidadeSaida = paraDecimal(input.quantidade);
-
-  if (quantidadeSaida.lessThanOrEqualTo(0)) {
-    throw new Error("Quantidade da saída deve ser maior que zero.");
-  }
-
-  return db.$transaction(async (tx) => {
-    const estoque = await obterOuCriarEstoqueTravado(tx, input.produtoId, input.depositoId);
-
-    if (quantidadeSaida.greaterThan(estoque.quantidadeSaldo)) {
-      throw new SaldoInsuficienteError(estoque.quantidadeSaldo, quantidadeSaida);
-    }
-
-    const novaQuantidade = estoque.quantidadeSaldo.minus(quantidadeSaida);
-    const novoValorTotal = novaQuantidade.times(estoque.custoMedioAtual);
-
-    await tx.produtoEstoque.update({
-      where: { id: estoque.id },
-      data: {
-        quantidadeSaldo: novaQuantidade,
-        valorTotalSaldo: novoValorTotal,
-      },
-    });
-
-    return tx.movimentacao.create({
-      data: {
-        produtoId: input.produtoId,
-        depositoId: input.depositoId,
-        tipoMovimento: input.tipoMovimento,
-        dataMovimento: input.dataMovimento ?? new Date(),
-        quantidade: quantidadeSaida,
-        custoMedioApos: estoque.custoMedioAtual,
-        saldoQuantidadeApos: novaQuantidade,
-        saldoValorApos: novoValorTotal,
-        precoVenda:
-          input.precoVenda !== undefined ? paraDecimal(input.precoVenda) : undefined,
-        clienteId: input.clienteId,
-        usuarioId: input.usuarioId,
-        observacao: input.observacao,
-      },
-    });
-  });
+  return db.$transaction((tx) => registrarSaidaNaTransacao(tx, input));
 }
 
 export type RegistrarTransferenciaInput = {

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, Plus, ClipboardList, Package, Truck, Users, Warehouse, UserCog, Tags, Ruler } from "lucide-react";
+import { ChevronRight, Plus, ClipboardList, ListChecks, Package, Truck, Users, Warehouse, UserCog, Tags, Ruler, Wrench } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { podeVerCusto, podeGerenciarUsuarios } from "@/lib/permissions";
@@ -44,6 +44,18 @@ export default async function HomePage() {
       icon: ClipboardList,
     },
     {
+      href: "/ordens-servico/nova",
+      titulo: "Nova Ordem de Serviço",
+      descricao: "Serviços e produtos usados",
+      icon: Wrench,
+    },
+    {
+      href: "/ordens-servico",
+      titulo: "Ordens de Serviço",
+      descricao: "Acompanhar OS abertas",
+      icon: ListChecks,
+    },
+    {
       href: "/produtos",
       titulo: "Produtos",
       descricao: "Cadastro e ficha Kardex",
@@ -57,6 +69,7 @@ export default async function HomePage() {
     { href: "/depositos", titulo: "Depósitos", icon: Warehouse },
     { href: "/categorias", titulo: "Categorias", icon: Tags },
     { href: "/unidades-medida", titulo: "Unidades de Medida", icon: Ruler },
+    { href: "/servicos", titulo: "Serviços", icon: Wrench },
     ...(podeGerenciarUsuarios(perfil) ? [{ href: "/usuarios", titulo: "Usuários", icon: UserCog }] : []),
   ];
 

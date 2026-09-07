@@ -44,6 +44,14 @@ enum TipoMovimento {
   uso_interno
   ajuste_saida
   transferencia_saida
+  os_saida
+}
+
+enum StatusOS {
+  aberta
+  em_andamento
+  concluida
+  cancelada
 }
 
 model Deposito {
@@ -56,6 +64,7 @@ model Deposito {
   usuariosPadrao   Usuario[]         @relation("UsuarioDepositoPadrao")
   produtoEstoques  ProdutoEstoque[]
   movimentacoes    Movimentacao[]
+  ordensServico    OrdemServico[]
 
   @@map("depositos")
 }
@@ -72,6 +81,7 @@ model Usuario {
 
   depositoPadrao    Deposito?      @relation("UsuarioDepositoPadrao", fields: [depositoPadraoId], references: [id])
   movimentacoes     Movimentacao[]
+  ordensServico     OrdemServico[]
 
   @@map("usuarios")
 }
@@ -99,6 +109,7 @@ model Cliente {
   criadoEm    DateTime    @default(now()) @map("criado_em")
 
   movimentacoes Movimentacao[]
+  ordensServico OrdemServico[]
 
   @@map("clientes")
 }
@@ -142,6 +153,7 @@ model Produto {
   unidadeMedida UnidadeMedida  @relation(fields: [unidadeMedidaId], references: [id])
   estoques      ProdutoEstoque[]
   movimentacoes Movimentacao[]
+  itensOS       ItemOrdemServicoProduto[]
 
   @@map("produtos")
 }
@@ -177,15 +189,77 @@ model Movimentacao {
   clienteId             String?       @map("cliente_id")
   fornecedorId          String?       @map("fornecedor_id")
   usuarioId             String        @map("usuario_id")
+  ordemServicoId        String?       @map("ordem_servico_id")
   observacao            String?
   criadoEm              DateTime      @default(now()) @map("criado_em")
 
-  produto    Produto     @relation(fields: [produtoId], references: [id])
-  deposito   Deposito    @relation(fields: [depositoId], references: [id])
-  cliente    Cliente?    @relation(fields: [clienteId], references: [id])
-  fornecedor Fornecedor? @relation(fields: [fornecedorId], references: [id])
-  usuario    Usuario     @relation(fields: [usuarioId], references: [id])
+  produto      Produto       @relation(fields: [produtoId], references: [id])
+  deposito     Deposito      @relation(fields: [depositoId], references: [id])
+  cliente      Cliente?      @relation(fields: [clienteId], references: [id])
+  fornecedor   Fornecedor?   @relation(fields: [fornecedorId], references: [id])
+  usuario      Usuario       @relation(fields: [usuarioId], references: [id])
+  ordemServico OrdemServico? @relation(fields: [ordemServicoId], references: [id])
 
   @@index([produtoId, depositoId, dataMovimento])
   @@map("movimentacoes")
+}
+
+model Servico {
+  id          String   @id @default(uuid())
+  nome        String   @unique
+  precoPadrao Decimal  @default(0) @map("preco_padrao") @db.Decimal(14, 2)
+  ativo       Boolean  @default(true)
+  criadoEm    DateTime @default(now()) @map("criado_em")
+
+  itensOS ItemOrdemServicoServico[]
+
+  @@map("servicos")
+}
+
+model OrdemServico {
+  id          String    @id @default(uuid())
+  numero      Int       @unique @default(autoincrement())
+  clienteId   String    @map("cliente_id")
+  depositoId  String    @map("deposito_id")
+  usuarioId   String    @map("usuario_id")
+  status      StatusOS  @default(aberta)
+  observacao  String?
+  criadaEm    DateTime  @default(now()) @map("criada_em")
+  concluidaEm DateTime? @map("concluida_em")
+
+  cliente  Cliente  @relation(fields: [clienteId], references: [id])
+  deposito Deposito @relation(fields: [depositoId], references: [id])
+  usuario  Usuario  @relation(fields: [usuarioId], references: [id])
+
+  itensProduto  ItemOrdemServicoProduto[]
+  itensServico  ItemOrdemServicoServico[]
+  movimentacoes Movimentacao[]
+
+  @@map("ordens_servico")
+}
+
+model ItemOrdemServicoProduto {
+  id             String  @id @default(uuid())
+  ordemServicoId String  @map("ordem_servico_id")
+  produtoId      String  @map("produto_id")
+  quantidade     Decimal @db.Decimal(14, 3)
+  precoUnitario  Decimal @map("preco_unitario") @db.Decimal(14, 2)
+
+  ordemServico OrdemServico @relation(fields: [ordemServicoId], references: [id], onDelete: Cascade)
+  produto      Produto      @relation(fields: [produtoId], references: [id])
+
+  @@map("os_itens_produto")
+}
+
+model ItemOrdemServicoServico {
+  id             String  @id @default(uuid())
+  ordemServicoId String  @map("ordem_servico_id")
+  servicoId      String  @map("servico_id")
+  quantidade     Decimal @default(1) @db.Decimal(14, 3)
+  precoUnitario  Decimal @map("preco_unitario") @db.Decimal(14, 2)
+
+  ordemServico OrdemServico @relation(fields: [ordemServicoId], references: [id], onDelete: Cascade)
+  servico      Servico      @relation(fields: [servicoId], references: [id])
+
+  @@map("os_itens_servico")
 }
