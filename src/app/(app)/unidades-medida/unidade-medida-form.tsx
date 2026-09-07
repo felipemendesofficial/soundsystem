@@ -9,6 +9,9 @@ import type { UnidadeMedidaFormState } from "./actions";
 
 type Action = (prevState: UnidadeMedidaFormState, formData: FormData) => Promise<UnidadeMedidaFormState>;
 
+const labelClass = "text-[15px] font-semibold";
+const inputClass = "h-11 px-3.5 text-base bg-card";
+
 export function UnidadeMedidaForm({
   action,
   defaultValues,
@@ -19,17 +22,22 @@ export function UnidadeMedidaForm({
   const [state, formAction, pending] = useActionState(action, {});
 
   return (
-    <form action={formAction} className="max-w-md space-y-4">
+    <form action={formAction} className="max-w-md space-y-6">
       <div className="space-y-2">
-        <Label htmlFor="nome">Nome</Label>
-        <Input id="nome" name="nome" required defaultValue={defaultValues?.nome} />
+        <Label htmlFor="nome" className={labelClass}>Nome</Label>
+        <Input id="nome" name="nome" required defaultValue={defaultValues?.nome} className={inputClass} />
       </div>
       {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}
       <div className="flex gap-3">
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending} className="h-11 px-7 text-base">
           {pending ? "Salvando..." : "Salvar"}
         </Button>
-        <Button type="button" variant="outline" render={<Link href="/unidades-medida" />}>
+        <Button
+          type="button"
+          variant="outline"
+          render={<Link href="/unidades-medida" />}
+          className="h-11 px-7 text-base"
+        >
           Cancelar
         </Button>
       </div>

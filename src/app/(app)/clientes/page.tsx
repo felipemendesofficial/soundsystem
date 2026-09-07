@@ -1,10 +1,19 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { Button } from "@/components/ui/button";
-import { DataTable } from "@/components/data-table";
+import { ClientesLista, type ItemCliente } from "@/components/clientes-lista";
 
 export default async function ClientesPage() {
   const clientes = await db.cliente.findMany({ orderBy: { nome: "asc" } });
+
+  const itensLista: ItemCliente[] = clientes.map((c) => ({
+    id: c.id,
+    nome: c.nome,
+    tipo: c.tipoCliente === "varejista" ? "Varejista" : "Atacadista",
+    telefone: c.telefone ?? "-",
+    email: c.email ?? "-",
+    buscaTexto: [c.nome, c.telefone, c.email].filter(Boolean).join(" ").toLowerCase(),
+  }));
 
   return (
     <div className="space-y-6">
@@ -13,24 +22,7 @@ export default async function ClientesPage() {
         <Button render={<Link href="/clientes/novo" />}>Novo Cliente</Button>
       </div>
 
-      <DataTable
-        rows={clientes}
-        getKey={(c) => c.id}
-        columns={[
-          { header: "Nome", cell: (c) => c.nome },
-          { header: "Tipo", cell: (c) => (c.tipoCliente === "varejista" ? "Varejista" : "Atacadista") },
-          { header: "Telefone", cell: (c) => c.telefone ?? "-" },
-          { header: "Email", cell: (c) => c.email ?? "-" },
-          {
-            header: "",
-            cell: (c) => (
-              <Link href={`/clientes/${c.id}`} className="text-sm underline underline-offset-2">
-                Editar
-              </Link>
-            ),
-          },
-        ]}
-      />
+      <ClientesLista itens={itensLista} />
     </div>
   );
 }
