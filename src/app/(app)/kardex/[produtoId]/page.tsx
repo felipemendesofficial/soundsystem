@@ -16,6 +16,7 @@ const TIPO_LABEL: Record<string, string> = {
   uso_interno: "Uso Interno",
   ajuste_saida: "Ajuste (Saída)",
   transferencia_saida: "Transferência (Saída)",
+  os_saida: "Baixa por Ordem de Serviço",
 };
 
 function formatarNumero(valor: unknown, casas = 3) {

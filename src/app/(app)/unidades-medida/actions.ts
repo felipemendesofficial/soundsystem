@@ -5,9 +5,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { normalizarTexto } from "@/lib/texto";
 
 const schema = z.object({
-  nome: z.string().trim().min(1, "Informe o nome."),
+  nome: z.string().trim().min(1, "Informe o nome.").transform(normalizarTexto),
 });
 
 export type UnidadeMedidaFormState = { erro?: string };

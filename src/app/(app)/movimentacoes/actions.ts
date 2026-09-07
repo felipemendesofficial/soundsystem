@@ -10,6 +10,7 @@ import {
   registrarTransferencia,
   SaldoInsuficienteError,
 } from "@/lib/kardex";
+import { normalizarTexto } from "@/lib/texto";
 
 export type MovimentacaoFormState = { erro?: string };
 
@@ -21,7 +22,7 @@ const transferenciaSchema = z.object({
   depositoOrigemId: z.string().min(1, "Selecione o depósito de origem."),
   depositoDestinoId: z.string().min(1, "Selecione o depósito de destino."),
   quantidade: z.coerce.number().positive("Quantidade deve ser maior que zero."),
-  observacao: z.string().trim().optional(),
+  observacao: z.string().trim().transform(normalizarTexto).optional(),
 });
 
 const entradaSchema = z.object({
@@ -30,7 +31,7 @@ const entradaSchema = z.object({
   quantidade: z.coerce.number().positive("Quantidade deve ser maior que zero."),
   custoUnitario: z.coerce.number().nonnegative("Custo não pode ser negativo."),
   fornecedorId: z.string().trim().optional(),
-  observacao: z.string().trim().optional(),
+  observacao: z.string().trim().transform(normalizarTexto).optional(),
 });
 
 const saidaSchema = z.object({
@@ -39,7 +40,7 @@ const saidaSchema = z.object({
   quantidade: z.coerce.number().positive("Quantidade deve ser maior que zero."),
   precoVenda: z.string().trim().optional(),
   clienteId: z.string().trim().optional(),
-  observacao: z.string().trim().optional(),
+  observacao: z.string().trim().transform(normalizarTexto).optional(),
 });
 
 export async function registrarMovimento(

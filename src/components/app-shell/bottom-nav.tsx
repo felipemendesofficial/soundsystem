@@ -14,6 +14,8 @@ import {
   UserCog,
   Tags,
   Ruler,
+  Wrench,
+  ListChecks,
   LogOut,
 } from "lucide-react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
@@ -28,7 +30,16 @@ const NAV_ITEMS = [
   { href: "/estoque", label: "Estoque", icon: ClipboardList },
 ];
 
-const MAIS_ROUTES = ["/fornecedores", "/clientes", "/depositos", "/categorias", "/unidades-medida", "/usuarios"];
+const MAIS_ROUTES = [
+  "/fornecedores",
+  "/clientes",
+  "/depositos",
+  "/categorias",
+  "/unidades-medida",
+  "/servicos",
+  "/ordens-servico",
+  "/usuarios",
+];
 
 function NavLink({
   href,
@@ -129,6 +140,20 @@ export function BottomNav({ isAdmin }: { isAdmin: boolean }) {
               >
                 <Ruler className="size-[18px] flex-none text-primary" />
                 <span className="text-[13.5px] font-medium">Unidades de Medida</span>
+              </DialogClose>
+              <DialogClose
+                render={<Link href="/servicos" />}
+                className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
+              >
+                <Wrench className="size-[18px] flex-none text-primary" />
+                <span className="text-[13.5px] font-medium">Serviços</span>
+              </DialogClose>
+              <DialogClose
+                render={<Link href="/ordens-servico" />}
+                className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
+              >
+                <ListChecks className="size-[18px] flex-none text-primary" />
+                <span className="text-[13.5px] font-medium">Ordens de Serviço</span>
               </DialogClose>
               {isAdmin && (
                 <DialogClose

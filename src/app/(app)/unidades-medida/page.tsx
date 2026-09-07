@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { DataTable } from "@/components/data-table";
+import { UnidadesMedidaLista } from "@/components/unidades-medida-lista";
 
 export default async function UnidadesMedidaPage() {
   const unidades = await db.unidadeMedida.findMany({ orderBy: { nome: "asc" } });
@@ -14,28 +13,7 @@ export default async function UnidadesMedidaPage() {
         <Button render={<Link href="/unidades-medida/novo" />}>Nova Unidade</Button>
       </div>
 
-      <DataTable
-        rows={unidades}
-        getKey={(u) => u.id}
-        emptyMessage="Nenhuma unidade de medida cadastrada."
-        columns={[
-          { header: "Nome", cell: (u) => u.nome },
-          {
-            header: "Status",
-            cell: (u) => (
-              <Badge variant={u.ativo ? "default" : "secondary"}>{u.ativo ? "Ativo" : "Inativo"}</Badge>
-            ),
-          },
-          {
-            header: "",
-            cell: (u) => (
-              <Link href={`/unidades-medida/${u.id}`} className="text-sm underline underline-offset-2">
-                Editar
-              </Link>
-            ),
-          },
-        ]}
-      />
+      <UnidadesMedidaLista itens={unidades.map((u) => ({ id: u.id, nome: u.nome, ativo: u.ativo }))} />
     </div>
   );
 }

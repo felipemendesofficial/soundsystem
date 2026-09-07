@@ -5,13 +5,14 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { normalizarTexto } from "@/lib/texto";
 
 const schema = z.object({
-  sku: z.string().trim().min(1, "Informe o SKU."),
-  nome: z.string().trim().min(1, "Informe o nome."),
+  sku: z.string().trim().min(1, "Informe o SKU.").transform(normalizarTexto),
+  nome: z.string().trim().min(1, "Informe o nome.").transform(normalizarTexto),
   categoriaId: z.string().trim().min(1, "Selecione a categoria."),
-  marca: z.string().trim().optional(),
-  modelo: z.string().trim().optional(),
+  marca: z.string().trim().transform(normalizarTexto).optional(),
+  modelo: z.string().trim().transform(normalizarTexto).optional(),
   unidadeMedidaId: z.string().trim().min(1, "Selecione a unidade de medida."),
   fotoUrl: z.string().trim().optional(),
 });

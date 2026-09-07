@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { podeGerenciarUsuarios } from "@/lib/permissions";
+import { normalizarTexto } from "@/lib/texto";
 
 export type UsuarioFormState = { erro?: string };
 
@@ -19,7 +20,7 @@ async function exigirAdmin() {
 }
 
 const baseSchema = {
-  nome: z.string().trim().min(1, "Informe o nome."),
+  nome: z.string().trim().min(1, "Informe o nome.").transform(normalizarTexto),
   email: z.string().trim().email("Email inválido."),
   perfil: z.enum(["admin", "estoquista", "vendedor"]),
   depositoPadraoId: z.string().trim().optional(),
