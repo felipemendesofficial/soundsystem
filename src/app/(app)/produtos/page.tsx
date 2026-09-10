@@ -17,6 +17,7 @@ export default async function ProdutosPage() {
       nome: p.nome,
       categoria: p.categoria.nome,
       marcaModelo,
+      controlaEstoque: p.controlaEstoque,
       buscaTexto: [p.sku, p.nome, p.categoria.nome, p.marca, p.modelo]
         .filter(Boolean)
         .join(" ")

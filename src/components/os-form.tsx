@@ -84,9 +84,11 @@ export function OSForm({
   const depositosItems = Object.fromEntries(depositos.map((d) => [d.id, d.label]));
 
   function adicionarLinha(tipo: "produto" | "servico") {
+    // Novo item entra no topo da lista, ao lado dos botões "+ Produto/Serviço"
+    // — assim fica visível sem rolar a tela, útil ao lançar vários itens seguidos.
     setLinhas((atual) => [
-      ...atual,
       { key: novaChave(), tipo, item: null, quantidade: "1", precoUnitario: "0" },
+      ...atual,
     ]);
   }
 
