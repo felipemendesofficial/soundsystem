@@ -32,7 +32,7 @@ function toData(formData: FormData) {
     nome: formData.get("nome"),
     ativo: formData.get("ativo"),
     recebeComissao: formData.get("recebeComissao"),
-    tipoComissao: formData.get("tipoComissao"),
+    tipoComissao: formData.get("tipoComissao") || undefined,
     valorComissao: formData.get("valorComissao") || undefined,
   });
 }
