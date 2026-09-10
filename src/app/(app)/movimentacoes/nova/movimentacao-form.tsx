@@ -18,6 +18,7 @@ import {
   ComboboxList,
 } from "@/components/ui/combobox";
 import { registrarMovimento, type MovimentacaoFormState } from "../actions";
+import { calcularAjusteTotal, type FormatoAjuste, type ModoAjuste } from "@/lib/ajuste-total";
 
 const ENTRADA_TIPOS = new Set(["compra", "devolucao_cliente", "ajuste_entrada"]);
 const SAIDA_TIPOS = new Set(["venda", "devolucao_fornecedor", "perda_avaria", "uso_interno", "ajuste_saida"]);
@@ -69,6 +70,10 @@ function linhaVazia(): Linha {
   return { key: novaChave(), produto: null, quantidade: "1", custoUnitario: "0", precoVenda: "" };
 }
 
+function formatarMoeda(valor: number) {
+  return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 const labelClass = "text-[15px] font-semibold";
 const inputClass = "h-11 px-3.5 text-base bg-card";
 
@@ -102,6 +107,9 @@ export function MovimentacaoForm({
   // do React de componente trocando de não-controlado pra controlado.
   const [clienteId, setClienteId] = useState("");
   const [tabelaPrecoId, setTabelaPrecoId] = useState("");
+  const [modoAjuste, setModoAjuste] = useState<ModoAjuste>("nenhum");
+  const [formatoAjuste, setFormatoAjuste] = useState<FormatoAjuste>("percentual");
+  const [valorAjuste, setValorAjuste] = useState("");
 
   const tiposItems = Object.fromEntries(tiposDisponiveis.map((tipo) => [tipo, TIPOS_LABEL[tipo]]));
   const depositosItems = Object.fromEntries(depositos.map((d) => [d.id, d.label]));
@@ -138,15 +146,34 @@ export function MovimentacaoForm({
     setLinhas((atual) => atual.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   }
 
+  const linhasComProduto = linhas.filter((l) => l.produto !== null);
+
+  // Desconto/acréscimo total da venda, redistribuído proporcionalmente entre
+  // os itens — o preço declarado em cada linha continua editável e visível;
+  // o "preço final" abaixo é só quem realmente vai no envio.
+  const resultadoAjuste = calcularAjusteTotal(
+    linhasComProduto.map((l) => ({ quantidade: Number(l.quantidade) || 0, precoDeclarado: Number(l.precoVenda) || 0 })),
+    { modo: modoAjuste, formato: formatoAjuste, valor: Number(valorAjuste) || 0 }
+  );
+
   const itensSerializados = JSON.stringify(
-    linhas
-      .filter((l) => l.produto !== null)
-      .map((l) => ({
-        produtoId: l.produto!.id,
-        quantidade: l.quantidade,
-        ...(ehEntrada ? { custoUnitario: l.custoUnitario } : {}),
-        ...(ehVenda && l.precoVenda ? { precoVenda: l.precoVenda } : {}),
-      }))
+    linhasComProduto.map((l, idx) => ({
+      produtoId: l.produto!.id,
+      quantidade: l.quantidade,
+      ...(ehEntrada ? { custoUnitario: l.custoUnitario } : {}),
+      ...(ehVenda
+        ? {
+            precoVenda:
+              modoAjuste !== "nenhum"
+                ? String(resultadoAjuste.precosFinais[idx])
+                : l.precoVenda || undefined,
+          }
+        : {}),
+    }))
+  );
+
+  const precoFinalPorLinha = new Map(
+    linhasComProduto.map((l, idx) => [l.key, resultadoAjuste.precosFinais[idx]])
   );
 
   return (
@@ -389,10 +416,105 @@ export function MovimentacaoForm({
                   </div>
                 )}
               </div>
+
+              {ehVenda && modoAjuste !== "nenhum" && linha.produto && (
+                <p className="text-xs text-muted-foreground">
+                  Preço final (com {modoAjuste === "desconto" ? "desconto" : "acréscimo"}):{" "}
+                  <span className="font-semibold text-foreground">
+                    {formatarMoeda(precoFinalPorLinha.get(linha.key) ?? 0)}
+                  </span>
+                </p>
+              )}
             </li>
           ))}
         </ul>
       </div>
+
+      {ehVenda && linhasComProduto.length > 0 && (
+        <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+          <Label className={labelClass}>Desconto / Acréscimo (opcional)</Label>
+
+          <div className="grid grid-cols-3 gap-2">
+            <Button
+              type="button"
+              variant={modoAjuste === "nenhum" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setModoAjuste("nenhum")}
+            >
+              Nenhum
+            </Button>
+            <Button
+              type="button"
+              variant={modoAjuste === "desconto" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setModoAjuste("desconto")}
+            >
+              Desconto
+            </Button>
+            <Button
+              type="button"
+              variant={modoAjuste === "acrescimo" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setModoAjuste("acrescimo")}
+            >
+              Acréscimo
+            </Button>
+          </div>
+
+          {modoAjuste !== "nenhum" && (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={formatoAjuste === "percentual" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFormatoAjuste("percentual")}
+                >
+                  Percentual (%)
+                </Button>
+                <Button
+                  type="button"
+                  variant={formatoAjuste === "valor" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFormatoAjuste("valor")}
+                >
+                  Valor (R$)
+                </Button>
+              </div>
+
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder={formatoAjuste === "percentual" ? "Ex.: 10" : "Ex.: 50,00"}
+                value={valorAjuste}
+                onChange={(e) => setValorAjuste(e.target.value)}
+                className="h-10 bg-background"
+              />
+
+              <div className="space-y-1 border-t border-border pt-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="font-medium">{formatarMoeda(resultadoAjuste.subtotal)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    {modoAjuste === "desconto" ? "Desconto" : "Acréscimo"}
+                  </span>
+                  <span className="font-medium">
+                    {modoAjuste === "desconto" ? "−" : "+"}
+                    {formatarMoeda(resultadoAjuste.valorAjuste)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-base font-semibold">
+                  <span>Total</span>
+                  <span>{formatarMoeda(resultadoAjuste.total)}</span>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="observacao" className={labelClass}>Observação</Label>

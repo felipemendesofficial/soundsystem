@@ -18,6 +18,7 @@ import {
   ComboboxList,
 } from "@/components/ui/combobox";
 import type { OrdemServicoFormState } from "@/app/(app)/ordens-servico/actions";
+import { calcularAjusteTotal, type FormatoAjuste, type ModoAjuste } from "@/lib/ajuste-total";
 
 type Item = { id: string; label: string };
 type ServicoItem = Item & { precoPadrao: number };
@@ -37,6 +38,10 @@ let contadorChave = 0;
 function novaChave() {
   contadorChave += 1;
   return `linha-${contadorChave}`;
+}
+
+function formatarMoeda(valor: number) {
+  return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 const labelClass = "text-[15px] font-semibold";
@@ -93,6 +98,9 @@ export function OSForm({
   const [tabelaPrecoId, setTabelaPrecoId] = useState(
     () => clientes.find((c) => c.id === defaultValues?.clienteId)?.tabelaPrecoPadraoId ?? ""
   );
+  const [modoAjuste, setModoAjuste] = useState<ModoAjuste>("nenhum");
+  const [formatoAjuste, setFormatoAjuste] = useState<FormatoAjuste>("percentual");
+  const [valorAjuste, setValorAjuste] = useState("");
 
   const clientesItems = Object.fromEntries(clientes.map((c) => [c.id, c.label]));
   const depositosItems = Object.fromEntries(depositos.map((d) => [d.id, d.label]));
@@ -124,22 +132,29 @@ export function OSForm({
     setLinhas((atual) => atual.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   }
 
-  const itensSerializados = JSON.stringify(
-    linhas
-      .filter((l) => l.item !== null)
-      .map((l) => ({
-        tipo: l.tipo,
-        itemId: l.item!.id,
-        quantidade: l.quantidade,
-        precoUnitario: l.precoUnitario,
-      }))
+  const linhasComItem = linhas.filter((l) => l.item !== null);
+
+  // Desconto/acréscimo total da OS (produtos + serviços juntos), redistribuído
+  // proporcionalmente entre os itens — mesma lógica da Nova Movimentação. O
+  // preço declarado em cada linha continua editável; "preço final" é quem
+  // realmente vai no envio.
+  const resultadoAjuste = calcularAjusteTotal(
+    linhasComItem.map((l) => ({ quantidade: Number(l.quantidade) || 0, precoDeclarado: Number(l.precoUnitario) || 0 })),
+    { modo: modoAjuste, formato: formatoAjuste, valor: Number(valorAjuste) || 0 }
   );
 
-  const total = linhas.reduce((acc, l) => {
-    const qtd = Number(l.quantidade) || 0;
-    const preco = Number(l.precoUnitario) || 0;
-    return acc + qtd * preco;
-  }, 0);
+  const itensSerializados = JSON.stringify(
+    linhasComItem.map((l, idx) => ({
+      tipo: l.tipo,
+      itemId: l.item!.id,
+      quantidade: l.quantidade,
+      precoUnitario: modoAjuste !== "nenhum" ? String(resultadoAjuste.precosFinais[idx]) : l.precoUnitario,
+    }))
+  );
+
+  const precoFinalPorLinha = new Map(
+    linhasComItem.map((l, idx) => [l.key, resultadoAjuste.precosFinais[idx]])
+  );
 
   return (
     <form action={formAction} className="max-w-lg space-y-6">
@@ -309,15 +324,108 @@ export function OSForm({
                     />
                   </div>
                 </div>
+
+                {modoAjuste !== "nenhum" && linha.item && (
+                  <p className="text-xs text-muted-foreground">
+                    Preço final (com {modoAjuste === "desconto" ? "desconto" : "acréscimo"}):{" "}
+                    <span className="font-semibold text-foreground">
+                      {formatarMoeda(precoFinalPorLinha.get(linha.key) ?? 0)}
+                    </span>
+                  </p>
+                )}
               </li>
             );
           })}
         </ul>
 
-        {linhas.length > 0 && (
-          <p className="text-right text-sm font-medium">
-            Total: {total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-          </p>
+        {linhasComItem.length > 0 && (
+          <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+            <Label className={labelClass}>Desconto / Acréscimo (opcional)</Label>
+
+            <div className="grid grid-cols-3 gap-2">
+              <Button
+                type="button"
+                variant={modoAjuste === "nenhum" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setModoAjuste("nenhum")}
+              >
+                Nenhum
+              </Button>
+              <Button
+                type="button"
+                variant={modoAjuste === "desconto" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setModoAjuste("desconto")}
+              >
+                Desconto
+              </Button>
+              <Button
+                type="button"
+                variant={modoAjuste === "acrescimo" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setModoAjuste("acrescimo")}
+              >
+                Acréscimo
+              </Button>
+            </div>
+
+            {modoAjuste !== "nenhum" && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant={formatoAjuste === "percentual" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setFormatoAjuste("percentual")}
+                  >
+                    Percentual (%)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={formatoAjuste === "valor" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setFormatoAjuste("valor")}
+                  >
+                    Valor (R$)
+                  </Button>
+                </div>
+
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder={formatoAjuste === "percentual" ? "Ex.: 10" : "Ex.: 50,00"}
+                  value={valorAjuste}
+                  onChange={(e) => setValorAjuste(e.target.value)}
+                  className="h-10 bg-background"
+                />
+              </>
+            )}
+
+            <div className="space-y-1 border-t border-border pt-3 text-sm">
+              {modoAjuste !== "nenhum" && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="font-medium">{formatarMoeda(resultadoAjuste.subtotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">
+                      {modoAjuste === "desconto" ? "Desconto" : "Acréscimo"}
+                    </span>
+                    <span className="font-medium">
+                      {modoAjuste === "desconto" ? "−" : "+"}
+                      {formatarMoeda(resultadoAjuste.valorAjuste)}
+                    </span>
+                  </div>
+                </>
+              )}
+              <div className="flex items-center justify-between text-base font-semibold">
+                <span>Total</span>
+                <span>{formatarMoeda(resultadoAjuste.total)}</span>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
