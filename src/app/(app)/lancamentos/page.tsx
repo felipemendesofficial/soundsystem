@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import type { StatusLancamento } from "@/generated/prisma/client";
 import { Button } from "@/components/ui/button";
 import { StatusLancamentoFilter } from "@/components/status-lancamento-filter";
+import { DataLancamentoFilter } from "@/components/data-lancamento-filter";
 import { LancamentosLista, type ItemLancamento } from "@/components/lancamentos-lista";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -27,16 +28,37 @@ const TIPO_LABEL: Record<string, string> = {
   transferencia: "Transferência",
 };
 
+function paraISO(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Intervalo do dia em horário local (mesmo critério do resto do app — ex.:
+// `obterVisaoGeralVendas` na home — que usa Date local sem fuso explícito).
+function intervaloDoDia(dataISO: string) {
+  const [ano, mes, dia] = dataISO.split("-").map(Number);
+  return { gte: new Date(ano, mes - 1, dia), lt: new Date(ano, mes - 1, dia + 1) };
+}
+
 export default async function LancamentosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; data?: string }>;
 }) {
-  const { status } = await searchParams;
+  const { status, data } = await searchParams;
+  const hojeISO = paraISO(new Date());
+  const dataFiltro = data === "todos" ? null : (data ?? hojeISO);
 
   const lancamentos = await db.lancamento.findMany({
-    where: status ? { status: status as StatusLancamento } : undefined,
-    include: { deposito: true, depositoOrigem: true, depositoDestino: true },
+    where: {
+      ...(status ? { status: status as StatusLancamento } : {}),
+      ...(dataFiltro ? { criadoEm: intervaloDoDia(dataFiltro) } : {}),
+    },
+    include: {
+      deposito: true,
+      depositoOrigem: true,
+      depositoDestino: true,
+      itens: { include: { produto: true } },
+    },
     orderBy: { numero: "desc" },
   });
 
@@ -51,7 +73,9 @@ export default async function LancamentosPage({
         ? `${l.depositoOrigem?.nome ?? "-"} → ${l.depositoDestino?.nome ?? "-"}`
         : (l.deposito?.nome ?? "-"),
     data: new Date(l.criadoEm).toLocaleDateString("pt-BR"),
-    buscaTexto: [`lançamento #${l.numero}`, TIPO_LABEL[l.tipo]].join(" ").toLowerCase(),
+    buscaTexto: [`lançamento #${l.numero}`, TIPO_LABEL[l.tipo], ...l.itens.map((i) => i.produto.nome)]
+      .join(" ")
+      .toLowerCase(),
   }));
 
   return (
@@ -62,6 +86,7 @@ export default async function LancamentosPage({
       </div>
 
       <StatusLancamentoFilter />
+      <DataLancamentoFilter padrao={hojeISO} />
 
       <LancamentosLista itens={itensLista} />
     </div>

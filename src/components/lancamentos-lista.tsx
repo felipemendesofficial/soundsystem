@@ -27,7 +27,7 @@ export function LancamentosLista({ itens }: { itens: ItemLancamento[] }) {
       <Input
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
-        placeholder="Buscar por número ou tipo"
+        placeholder="Buscar por número, tipo ou produto"
         aria-label="Buscar Lançamento"
       />
 
