@@ -15,6 +15,7 @@ const schema = z.object({
   modelo: z.string().trim().transform(normalizarTexto).optional(),
   unidadeMedidaId: z.string().trim().min(1, "Selecione a unidade de medida."),
   fotoUrl: z.string().trim().optional(),
+  controlaEstoque: z.enum(["on"]).nullish(),
 });
 
 export type ProdutoFormState = { erro?: string };
@@ -34,6 +35,7 @@ function toData(formData: FormData) {
     modelo: formData.get("modelo"),
     unidadeMedidaId: formData.get("unidadeMedidaId"),
     fotoUrl: formData.get("fotoUrl"),
+    controlaEstoque: formData.get("controlaEstoque"),
   });
 }
 
@@ -53,6 +55,7 @@ export async function criarProduto(_prev: ProdutoFormState, formData: FormData):
         estadoConservacao: "bom",
         unidadeMedidaId: parsed.data.unidadeMedidaId,
         fotoUrl: parsed.data.fotoUrl || null,
+        controlaEstoque: parsed.data.controlaEstoque === "on",
       },
     });
   } catch {
@@ -83,6 +86,7 @@ export async function atualizarProduto(
         modelo: parsed.data.modelo || null,
         unidadeMedidaId: parsed.data.unidadeMedidaId,
         fotoUrl: parsed.data.fotoUrl || null,
+        controlaEstoque: parsed.data.controlaEstoque === "on",
       },
     });
   } catch {

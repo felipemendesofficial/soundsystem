@@ -102,7 +102,9 @@ export function MovimentacaoForm({
   const ehTransferencia = tipoMovimento === "transferencia";
 
   function adicionarLinha() {
-    setLinhas((atual) => [...atual, linhaVazia()]);
+    // Novo item entra no topo da lista, ao lado do botão "+ Produto" — assim
+    // fica visível sem rolar a tela, útil ao lançar vários itens seguidos.
+    setLinhas((atual) => [linhaVazia(), ...atual]);
   }
 
   function removerLinha(key: string) {

@@ -82,16 +82,31 @@ function paraDecimal(valor: number | string | Prisma.Decimal): Prisma.Decimal {
   return valor instanceof Prisma.Decimal ? valor : new Prisma.Decimal(valor);
 }
 
+/**
+ * Produtos com `controlaEstoque = false` podem ser indicados em movimentos e
+ * OS (para histórico/faturamento), mas nunca alteram produto_estoque: o saldo
+ * e o custo médio desses itens permanecem sempre zero, sem linha em
+ * produto_estoque e sem bloqueio por saldo insuficiente.
+ */
+async function produtoControlaEstoque(tx: Prisma.TransactionClient, produtoId: string): Promise<boolean> {
+  const produto = await tx.produto.findUniqueOrThrow({
+    where: { id: produtoId },
+    select: { controlaEstoque: true },
+  });
+  return produto.controlaEstoque;
+}
+
 export type RegistrarEntradaInput = {
   produtoId: string;
   depositoId: string;
   tipoMovimento: TipoMovimentoEntrada;
-  quantidade: number | string;
-  custoUnitario: number | string;
+  quantidade: number | string | Prisma.Decimal;
+  custoUnitario: number | string | Prisma.Decimal;
   fornecedorId?: string;
   usuarioId: string;
   observacao?: string;
   dataMovimento?: Date;
+  orcamentoId?: string;
 };
 
 /**
@@ -111,6 +126,27 @@ export async function registrarEntradaNaTransacao(
   }
   if (custoUnitarioEntrada.lessThan(0)) {
     throw new Error("Custo unitário não pode ser negativo.");
+  }
+
+  if (!(await produtoControlaEstoque(tx, input.produtoId))) {
+    const zero = new Prisma.Decimal(0);
+    return tx.movimentacao.create({
+      data: {
+        produtoId: input.produtoId,
+        depositoId: input.depositoId,
+        tipoMovimento: input.tipoMovimento,
+        dataMovimento: input.dataMovimento ?? new Date(),
+        quantidade: quantidadeEntrada,
+        custoUnitario: custoUnitarioEntrada,
+        custoMedioApos: zero,
+        saldoQuantidadeApos: zero,
+        saldoValorApos: zero,
+        fornecedorId: input.fornecedorId,
+        usuarioId: input.usuarioId,
+        observacao: input.observacao,
+        orcamentoId: input.orcamentoId,
+      },
+    });
   }
 
   const estoque = await obterOuCriarEstoqueTravado(tx, input.produtoId, input.depositoId);
@@ -146,6 +182,7 @@ export async function registrarEntradaNaTransacao(
       fornecedorId: input.fornecedorId,
       usuarioId: input.usuarioId,
       observacao: input.observacao,
+      orcamentoId: input.orcamentoId,
     },
   });
 }
@@ -184,6 +221,27 @@ export async function registrarSaidaNaTransacao(
 
   if (quantidadeSaida.lessThanOrEqualTo(0)) {
     throw new Error("Quantidade da saída deve ser maior que zero.");
+  }
+
+  if (!(await produtoControlaEstoque(tx, input.produtoId))) {
+    const zero = new Prisma.Decimal(0);
+    return tx.movimentacao.create({
+      data: {
+        produtoId: input.produtoId,
+        depositoId: input.depositoId,
+        tipoMovimento: input.tipoMovimento,
+        dataMovimento: input.dataMovimento ?? new Date(),
+        quantidade: quantidadeSaida,
+        custoMedioApos: zero,
+        saldoQuantidadeApos: zero,
+        saldoValorApos: zero,
+        precoVenda: input.precoVenda !== undefined ? paraDecimal(input.precoVenda) : undefined,
+        clienteId: input.clienteId,
+        usuarioId: input.usuarioId,
+        observacao: input.observacao,
+        ordemServicoId: input.ordemServicoId,
+      },
+    });
   }
 
   const estoque = await obterOuCriarEstoqueTravado(tx, input.produtoId, input.depositoId);
@@ -257,6 +315,37 @@ export async function registrarTransferenciaNaTransacao(
   }
   if (input.depositoOrigemId === input.depositoDestinoId) {
     throw new Error("Depósito de origem e destino devem ser diferentes.");
+  }
+
+  if (!(await produtoControlaEstoque(tx, input.produtoId))) {
+    const zero = new Prisma.Decimal(0);
+    const saida = await tx.movimentacao.create({
+      data: {
+        produtoId: input.produtoId,
+        depositoId: input.depositoOrigemId,
+        tipoMovimento: TipoMovimento.transferencia_saida,
+        quantidade,
+        custoMedioApos: zero,
+        saldoQuantidadeApos: zero,
+        saldoValorApos: zero,
+        usuarioId: input.usuarioId,
+        observacao: input.observacao,
+      },
+    });
+    const entrada = await tx.movimentacao.create({
+      data: {
+        produtoId: input.produtoId,
+        depositoId: input.depositoDestinoId,
+        tipoMovimento: TipoMovimento.transferencia_entrada,
+        quantidade,
+        custoMedioApos: zero,
+        saldoQuantidadeApos: zero,
+        saldoValorApos: zero,
+        usuarioId: input.usuarioId,
+        observacao: input.observacao,
+      },
+    });
+    return { saida, entrada };
   }
 
   const depositosEmOrdem = [input.depositoOrigemId, input.depositoDestinoId].sort();
@@ -341,4 +430,98 @@ export async function registrarTransferencia(
   input: RegistrarTransferenciaInput
 ): Promise<{ saida: Movimentacao; entrada: Movimentacao }> {
   return db.$transaction((tx) => registrarTransferenciaNaTransacao(tx, input));
+}
+
+export type EstornarEntradaInput = {
+  produtoId: string;
+  depositoId: string;
+  quantidade: number | string | Prisma.Decimal;
+  custoUnitarioOriginal: number | string | Prisma.Decimal;
+  usuarioId: string;
+  observacao?: string;
+  orcamentoId?: string;
+};
+
+/**
+ * Estorna uma entrada específica — hoje usado apenas ao cancelar o
+ * fechamento de um Orçamento de Compra (ver src/app/(app)/orcamentos).
+ * É uma EXCEÇÃO deliberada ao invariante "saídas nunca mudam custoMedioAtual":
+ * uma saída comum debita ao custo médio VIGENTE, mas aqui o objetivo é desfazer
+ * exatamente o efeito daquela entrada sobre a média ponderada — subtraímos a
+ * quantidade e o valor exatos que ela havia somado (quantidade *
+ * custoUnitarioOriginal) e recalculamos a média a partir do que sobra. Isso
+ * preserva corretamente o efeito de quaisquer outras movimentações feitas
+ * depois da entrada original (diferente de simplesmente dar baixa ao custo
+ * médio atual, que não reverteria a média ao que era antes da compra).
+ * Lançado como `devolucao_fornecedor` (tipo de saída) no Kardex.
+ */
+export async function estornarEntradaNaTransacao(
+  tx: Prisma.TransactionClient,
+  input: EstornarEntradaInput
+): Promise<Movimentacao> {
+  const quantidade = paraDecimal(input.quantidade);
+  const custoUnitarioOriginal = paraDecimal(input.custoUnitarioOriginal);
+
+  if (quantidade.lessThanOrEqualTo(0)) {
+    throw new Error("Quantidade do estorno deve ser maior que zero.");
+  }
+
+  if (!(await produtoControlaEstoque(tx, input.produtoId))) {
+    const zero = new Prisma.Decimal(0);
+    return tx.movimentacao.create({
+      data: {
+        produtoId: input.produtoId,
+        depositoId: input.depositoId,
+        tipoMovimento: TipoMovimento.devolucao_fornecedor,
+        quantidade,
+        custoUnitario: custoUnitarioOriginal,
+        custoMedioApos: zero,
+        saldoQuantidadeApos: zero,
+        saldoValorApos: zero,
+        usuarioId: input.usuarioId,
+        observacao: input.observacao,
+        orcamentoId: input.orcamentoId,
+      },
+    });
+  }
+
+  const estoque = await obterOuCriarEstoqueTravado(tx, input.produtoId, input.depositoId);
+
+  if (quantidade.greaterThan(estoque.quantidadeSaldo)) {
+    throw new SaldoInsuficienteError(input.produtoId, estoque.quantidadeSaldo, quantidade);
+  }
+
+  const novaQuantidade = estoque.quantidadeSaldo.minus(quantidade);
+  const valorAEstornar = quantidade.times(custoUnitarioOriginal);
+  const novoValorTotalBruto = estoque.valorTotalSaldo.minus(valorAEstornar);
+  // Guarda contra deriva: outras movimentações do produto podem ter alterado
+  // a média entre a entrada original e este estorno; nunca deixamos o valor
+  // total do saldo ficar negativo por causa disso.
+  const novoValorTotal = novoValorTotalBruto.lessThan(0) ? new Prisma.Decimal(0) : novoValorTotalBruto;
+  const novoCustoMedio = novaQuantidade.isZero() ? new Prisma.Decimal(0) : novoValorTotal.dividedBy(novaQuantidade);
+
+  await tx.produtoEstoque.update({
+    where: { id: estoque.id },
+    data: {
+      quantidadeSaldo: novaQuantidade,
+      custoMedioAtual: novoCustoMedio,
+      valorTotalSaldo: novoValorTotal,
+    },
+  });
+
+  return tx.movimentacao.create({
+    data: {
+      produtoId: input.produtoId,
+      depositoId: input.depositoId,
+      tipoMovimento: TipoMovimento.devolucao_fornecedor,
+      quantidade,
+      custoUnitario: custoUnitarioOriginal,
+      custoMedioApos: novoCustoMedio,
+      saldoQuantidadeApos: novaQuantidade,
+      saldoValorApos: novoValorTotal,
+      usuarioId: input.usuarioId,
+      observacao: input.observacao,
+      orcamentoId: input.orcamentoId,
+    },
+  });
 }

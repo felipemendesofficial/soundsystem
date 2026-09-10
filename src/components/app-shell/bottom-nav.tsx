@@ -16,6 +16,7 @@ import {
   Ruler,
   Wrench,
   ListChecks,
+  Calculator,
   LogOut,
 } from "lucide-react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
@@ -66,9 +67,13 @@ function NavLink({
   );
 }
 
-export function BottomNav({ isAdmin }: { isAdmin: boolean }) {
+export function BottomNav({ isAdmin, podeVerOrcamentos }: { isAdmin: boolean; podeVerOrcamentos: boolean }) {
   const pathname = usePathname();
-  const mais = isAdmin ? [...MAIS_ROUTES, "/usuarios"] : MAIS_ROUTES;
+  const mais = [
+    ...MAIS_ROUTES,
+    ...(podeVerOrcamentos ? ["/orcamentos"] : []),
+    ...(isAdmin ? ["/usuarios"] : []),
+  ];
   const maisAtivo = mais.some((rota) => pathname.startsWith(rota));
 
   return (
@@ -155,6 +160,15 @@ export function BottomNav({ isAdmin }: { isAdmin: boolean }) {
                 <ListChecks className="size-[18px] flex-none text-primary" />
                 <span className="text-[13.5px] font-medium">Ordens de Serviço</span>
               </DialogClose>
+              {podeVerOrcamentos && (
+                <DialogClose
+                  render={<Link href="/orcamentos" />}
+                  className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
+                >
+                  <Calculator className="size-[18px] flex-none text-primary" />
+                  <span className="text-[13.5px] font-medium">Orçamentos</span>
+                </DialogClose>
+              )}
               {isAdmin && (
                 <DialogClose
                   render={<Link href="/usuarios" />}

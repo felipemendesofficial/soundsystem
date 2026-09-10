@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -32,6 +33,7 @@ export function ProdutoForm({
     modelo: string | null;
     unidadeMedidaId: string;
     fotoUrl: string | null;
+    controlaEstoque: boolean;
   };
 }) {
   const [state, formAction, pending] = useActionState(action, {});
@@ -97,6 +99,21 @@ export function ProdutoForm({
       <div className="space-y-2">
         <Label htmlFor="fotoUrl" className={labelClass}>URL da Foto (opcional)</Label>
         <Input id="fotoUrl" name="fotoUrl" defaultValue={defaultValues?.fotoUrl ?? ""} className={inputClass} />
+      </div>
+
+      <div className="space-y-2 rounded-lg border border-border bg-card p-4">
+        <div className="flex items-center gap-3">
+          <Checkbox
+            id="controlaEstoque"
+            name="controlaEstoque"
+            defaultChecked={defaultValues?.controlaEstoque ?? true}
+          />
+          <Label htmlFor="controlaEstoque" className={labelClass}>Controla estoque</Label>
+        </div>
+        <p className="text-[13px] text-muted-foreground">
+          Desmarque para itens que podem ser indicados em movimentações ou OS
+          sem afetar o saldo e o custo médio do estoque.
+        </p>
       </div>
 
       {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}

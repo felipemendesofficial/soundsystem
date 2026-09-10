@@ -23,6 +23,15 @@ export default auth((req) => {
     return NextResponse.redirect(new URL("/", nextUrl));
   }
 
+  if (
+    isLoggedIn &&
+    nextUrl.pathname.startsWith("/orcamentos") &&
+    req.auth?.user?.perfil !== "admin" &&
+    req.auth?.user?.perfil !== "estoquista"
+  ) {
+    return NextResponse.redirect(new URL("/", nextUrl));
+  }
+
   return NextResponse.next();
 });
 
