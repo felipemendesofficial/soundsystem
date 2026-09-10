@@ -7,12 +7,13 @@ export default async function NovaMovimentacaoPage() {
   const session = await auth();
   const perfil = session!.user.perfil;
 
-  const [produtos, depositos, fornecedores, clientes, tabelasPreco, itensTabelaPreco, ultimosPrecos] =
+  const [produtos, depositos, fornecedores, clientes, vendedores, tabelasPreco, itensTabelaPreco, ultimosPrecos] =
     await Promise.all([
       db.produto.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
       db.deposito.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
       db.fornecedor.findMany({ orderBy: { nome: "asc" } }),
       db.cliente.findMany({ orderBy: { nome: "asc" } }),
+      db.vendedor.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
       db.tabelaPreco.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
       db.itemTabelaPreco.findMany(),
       obterUltimosPrecosVenda(),
@@ -32,6 +33,7 @@ export default async function NovaMovimentacaoPage() {
         depositos={depositos.map((d) => ({ id: d.id, label: d.nome }))}
         fornecedores={fornecedores.map((f) => ({ id: f.id, label: f.nome }))}
         clientes={clientes.map((c) => ({ id: c.id, label: c.nome, tabelaPrecoPadraoId: c.tabelaPrecoPadraoId }))}
+        vendedores={vendedores.map((v) => ({ id: v.id, label: v.nome }))}
         tabelasPreco={tabelasPreco.map((t) => ({ id: t.id, label: t.nome }))}
         precosPorTabela={precosPorTabela}
         ultimosPrecosVenda={Object.fromEntries(ultimosPrecos)}

@@ -18,6 +18,7 @@ import {
   ListChecks,
   Calculator,
   Tag,
+  BadgePercent,
   LogOut,
 } from "lucide-react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
@@ -72,16 +73,19 @@ export function BottomNav({
   isAdmin,
   podeVerOrcamentos,
   podeVerTabelaPrecos,
+  podeVerVendedores,
 }: {
   isAdmin: boolean;
   podeVerOrcamentos: boolean;
   podeVerTabelaPrecos: boolean;
+  podeVerVendedores: boolean;
 }) {
   const pathname = usePathname();
   const mais = [
     ...MAIS_ROUTES,
     ...(podeVerOrcamentos ? ["/orcamentos"] : []),
     ...(podeVerTabelaPrecos ? ["/tabela-precos"] : []),
+    ...(podeVerVendedores ? ["/vendedores"] : []),
     ...(isAdmin ? ["/usuarios"] : []),
   ];
   const maisAtivo = mais.some((rota) => pathname.startsWith(rota));
@@ -186,6 +190,15 @@ export function BottomNav({
                 >
                   <Tag className="size-[18px] flex-none text-primary" />
                   <span className="text-[13.5px] font-medium">Tabelas de Preço</span>
+                </DialogClose>
+              )}
+              {podeVerVendedores && (
+                <DialogClose
+                  render={<Link href="/vendedores" />}
+                  className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
+                >
+                  <BadgePercent className="size-[18px] flex-none text-primary" />
+                  <span className="text-[13.5px] font-medium">Vendedores</span>
                 </DialogClose>
               )}
               {isAdmin && (

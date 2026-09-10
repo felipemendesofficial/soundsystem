@@ -28,3 +28,12 @@ export function podeGerenciarOrcamento(perfil: Perfil): boolean {
 export function podeGerenciarTabelaPreco(perfil: Perfil): boolean {
   return perfil === "admin" || perfil === "estoquista";
 }
+
+/**
+ * Cadastro de Vendedor (comissão) é dado sensível — mesma fronteira de
+ * `podeVerCusto`. Indicar um vendedor já cadastrado numa venda/OS continua
+ * liberado para qualquer perfil que possa lançar movimentação.
+ */
+export function podeGerenciarVendedor(perfil: Perfil): boolean {
+  return perfil === "admin" || perfil === "estoquista";
+}

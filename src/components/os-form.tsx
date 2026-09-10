@@ -23,6 +23,7 @@ import { calcularAjusteTotal, type FormatoAjuste, type ModoAjuste } from "@/lib/
 type Item = { id: string; label: string };
 type ServicoItem = Item & { precoPadrao: number };
 type ClienteItem = Item & { tabelaPrecoPadraoId: string | null };
+type VendedorItem = Item;
 
 type Linha = {
   key: string;
@@ -51,6 +52,7 @@ export function OSForm({
   action,
   clientes,
   depositos,
+  vendedores,
   produtos,
   servicos,
   tabelasPreco,
@@ -62,6 +64,7 @@ export function OSForm({
   action: Action;
   clientes: ClienteItem[];
   depositos: Item[];
+  vendedores: VendedorItem[];
   produtos: Item[];
   servicos: ServicoItem[];
   tabelasPreco: Item[];
@@ -71,6 +74,7 @@ export function OSForm({
   defaultValues?: {
     clienteId: string;
     depositoId: string;
+    vendedorId: string;
     observacao: string | null;
     itens: {
       tipo: "produto" | "servico";
@@ -95,6 +99,7 @@ export function OSForm({
   // recebe `value`; alternar de undefined pra string depois dispara warning
   // do React de componente trocando de não-controlado pra controlado.
   const [clienteId, setClienteId] = useState(defaultValues?.clienteId ?? "");
+  const [vendedorId, setVendedorId] = useState(defaultValues?.vendedorId ?? "");
   const [tabelaPrecoId, setTabelaPrecoId] = useState(
     () => clientes.find((c) => c.id === defaultValues?.clienteId)?.tabelaPrecoPadraoId ?? ""
   );
@@ -103,6 +108,7 @@ export function OSForm({
   const [valorAjuste, setValorAjuste] = useState("");
 
   const clientesItems = Object.fromEntries(clientes.map((c) => [c.id, c.label]));
+  const vendedoresItems = Object.fromEntries(vendedores.map((v) => [v.id, v.label]));
   const depositosItems = Object.fromEntries(depositos.map((d) => [d.id, d.label]));
   const tabelasPrecoItems = Object.fromEntries(tabelasPreco.map((t) => [t.id, t.label]));
 
@@ -206,6 +212,27 @@ export function OSForm({
           </Select>
         </div>
       )}
+
+      <div className="space-y-2">
+        <Label htmlFor="vendedorId" className={labelClass}>Vendedor</Label>
+        <Select
+          name="vendedorId"
+          value={vendedorId}
+          items={vendedoresItems}
+          onValueChange={(valor) => setVendedorId(valor ?? "")}
+        >
+          <SelectTrigger id="vendedorId" className={`w-full ${inputClass}`}>
+            <SelectValue placeholder="Selecione o vendedor" />
+          </SelectTrigger>
+          <SelectContent>
+            {vendedores.map((v) => (
+              <SelectItem key={v.id} value={v.id}>
+                {v.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       <div className="space-y-2">
         <Label htmlFor="depositoId" className={labelClass}>Depósito</Label>

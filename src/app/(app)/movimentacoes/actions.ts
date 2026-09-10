@@ -65,6 +65,7 @@ const entradaSchema = z.object({
 const saidaSchema = z.object({
   depositoId: z.string().min(1, "Selecione o depósito."),
   clienteId: z.string().trim().optional(),
+  vendedorId: z.string().trim().optional(),
   observacao: z.string().trim().transform(normalizarTexto).optional(),
   itens: parseItens(
     z.object({
@@ -139,10 +140,14 @@ export async function registrarMovimento(
       const parsed = saidaSchema.safeParse({
         depositoId: formData.get("depositoId"),
         clienteId: formData.get("clienteId") || undefined,
+        vendedorId: formData.get("vendedorId") || undefined,
         observacao: formData.get("observacao"),
         itens: formData.get("itens"),
       });
       if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+      if (tipoMovimento === "venda" && !parsed.data.vendedorId) {
+        return { erro: "Selecione o vendedor." };
+      }
 
       await db.$transaction(async (tx) => {
         for (const item of parsed.data.itens) {
@@ -152,6 +157,7 @@ export async function registrarMovimento(
             quantidade: item.quantidade,
             precoVenda: item.precoVenda,
             clienteId: parsed.data.clienteId || undefined,
+            vendedorId: parsed.data.vendedorId || undefined,
             observacao: parsed.data.observacao,
             tipoMovimento: tipoMovimento as
               | "venda"

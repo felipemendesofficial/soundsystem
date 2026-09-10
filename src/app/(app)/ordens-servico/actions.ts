@@ -21,6 +21,7 @@ const itemSchema = z.object({
 const schema = z.object({
   clienteId: z.string().min(1, "Selecione o cliente."),
   depositoId: z.string().min(1, "Selecione o depósito."),
+  vendedorId: z.string().min(1, "Selecione o vendedor."),
   observacao: z.string().trim().transform(normalizarTexto).optional(),
   itens: z
     .string()
@@ -54,6 +55,7 @@ function toData(formData: FormData) {
   return schema.safeParse({
     clienteId: formData.get("clienteId"),
     depositoId: formData.get("depositoId"),
+    vendedorId: formData.get("vendedorId"),
     observacao: formData.get("observacao"),
     itens: formData.get("itens"),
   });
@@ -73,6 +75,7 @@ export async function criarOrdemServico(
     data: {
       clienteId: parsed.data.clienteId,
       depositoId: parsed.data.depositoId,
+      vendedorId: parsed.data.vendedorId,
       usuarioId: permissao.session.user.id,
       observacao: parsed.data.observacao || null,
       itensProduto: {
@@ -117,6 +120,7 @@ export async function atualizarOrdemServico(
       data: {
         clienteId: parsed.data.clienteId,
         depositoId: parsed.data.depositoId,
+        vendedorId: parsed.data.vendedorId,
         observacao: parsed.data.observacao || null,
         itensProduto: {
           create: parsed.data.itens
@@ -206,6 +210,7 @@ export async function concluirOrdemServico(
           quantidade: item.quantidade.toString(),
           precoVenda: item.precoUnitario.toString(),
           clienteId: os.clienteId,
+          vendedorId: os.vendedorId,
           usuarioId: session.user.id,
           observacao: `Baixa referente à OS #${os.numero}`,
           ordemServicoId: os.id,

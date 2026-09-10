@@ -202,6 +202,7 @@ export type RegistrarSaidaInput = {
   quantidade: number | string;
   precoVenda?: number | string;
   clienteId?: string;
+  vendedorId?: string;
   usuarioId: string;
   observacao?: string;
   dataMovimento?: Date;
@@ -237,6 +238,7 @@ export async function registrarSaidaNaTransacao(
         saldoValorApos: zero,
         precoVenda: input.precoVenda !== undefined ? paraDecimal(input.precoVenda) : undefined,
         clienteId: input.clienteId,
+        vendedorId: input.vendedorId,
         usuarioId: input.usuarioId,
         observacao: input.observacao,
         ordemServicoId: input.ordemServicoId,
@@ -274,6 +276,7 @@ export async function registrarSaidaNaTransacao(
       precoVenda:
         input.precoVenda !== undefined ? paraDecimal(input.precoVenda) : undefined,
       clienteId: input.clienteId,
+      vendedorId: input.vendedorId,
       usuarioId: input.usuarioId,
       observacao: input.observacao,
       ordemServicoId: input.ordemServicoId,

@@ -59,6 +59,11 @@ enum StatusOrcamento {
   fechado
 }
 
+enum TipoComissao {
+  percentual
+  fixa
+}
+
 model Deposito {
   id       String   @id @default(uuid())
   nome     String
@@ -122,6 +127,25 @@ model Cliente {
   ordensServico     OrdemServico[]
 
   @@map("clientes")
+}
+
+/// Vendedor indicado numa venda ou OS para fins de comissionamento e futuros
+/// relatórios de produtividade — distinto do Perfil "vendedor" (que é sobre
+/// permissão de acesso ao sistema): o vendedor aqui é quem fez a venda, podendo
+/// inclusive ser lançada por um usuário de outro perfil (ex.: estoquista).
+model Vendedor {
+  id             String        @id @default(uuid())
+  nome           String
+  ativo          Boolean       @default(true)
+  recebeComissao Boolean       @default(false) @map("recebe_comissao")
+  tipoComissao   TipoComissao? @map("tipo_comissao")
+  valorComissao  Decimal?      @map("valor_comissao") @db.Decimal(14, 4)
+  criadoEm       DateTime      @default(now()) @map("criado_em")
+
+  movimentacoes Movimentacao[]
+  ordensServico OrdemServico[]
+
+  @@map("vendedores")
 }
 
 model Categoria {
@@ -230,6 +254,7 @@ model Movimentacao {
   precoVenda          Decimal?      @map("preco_venda") @db.Decimal(14, 2)
   clienteId           String?       @map("cliente_id")
   fornecedorId        String?       @map("fornecedor_id")
+  vendedorId          String?       @map("vendedor_id")
   usuarioId           String        @map("usuario_id")
   ordemServicoId      String?       @map("ordem_servico_id")
   orcamentoId         String?       @map("orcamento_id")
@@ -240,6 +265,7 @@ model Movimentacao {
   deposito     Deposito      @relation(fields: [depositoId], references: [id])
   cliente      Cliente?      @relation(fields: [clienteId], references: [id])
   fornecedor   Fornecedor?   @relation(fields: [fornecedorId], references: [id])
+  vendedor     Vendedor?     @relation(fields: [vendedorId], references: [id])
   usuario      Usuario       @relation(fields: [usuarioId], references: [id])
   ordemServico OrdemServico? @relation(fields: [ordemServicoId], references: [id])
   orcamento    Orcamento?    @relation(fields: [orcamentoId], references: [id])
@@ -265,6 +291,7 @@ model OrdemServico {
   numero      Int       @unique @default(autoincrement())
   clienteId   String    @map("cliente_id")
   depositoId  String    @map("deposito_id")
+  vendedorId  String    @map("vendedor_id")
   usuarioId   String    @map("usuario_id")
   status      StatusOS  @default(aberta)
   observacao  String?
@@ -273,6 +300,7 @@ model OrdemServico {
 
   cliente  Cliente  @relation(fields: [clienteId], references: [id])
   deposito Deposito @relation(fields: [depositoId], references: [id])
+  vendedor Vendedor @relation(fields: [vendedorId], references: [id])
   usuario  Usuario  @relation(fields: [usuarioId], references: [id])
 
   itensProduto  ItemOrdemServicoProduto[]

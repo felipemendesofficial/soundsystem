@@ -51,6 +51,7 @@ const estadoInicial: MovimentacaoFormState = {};
 
 type Item = { id: string; label: string };
 type ClienteItem = Item & { tabelaPrecoPadraoId: string | null };
+type VendedorItem = Item;
 
 type Linha = {
   key: string;
@@ -82,6 +83,7 @@ export function MovimentacaoForm({
   depositos,
   fornecedores,
   clientes,
+  vendedores,
   tabelasPreco,
   precosPorTabela,
   ultimosPrecosVenda,
@@ -92,6 +94,7 @@ export function MovimentacaoForm({
   depositos: Item[];
   fornecedores: Item[];
   clientes: ClienteItem[];
+  vendedores: VendedorItem[];
   tabelasPreco: Item[];
   precosPorTabela: Record<string, Record<string, number>>;
   ultimosPrecosVenda: Record<string, number>;
@@ -106,6 +109,7 @@ export function MovimentacaoForm({
   // recebe `value`; alternar de undefined pra string depois dispara warning
   // do React de componente trocando de não-controlado pra controlado.
   const [clienteId, setClienteId] = useState("");
+  const [vendedorId, setVendedorId] = useState("");
   const [tabelaPrecoId, setTabelaPrecoId] = useState("");
   const [modoAjuste, setModoAjuste] = useState<ModoAjuste>("nenhum");
   const [formatoAjuste, setFormatoAjuste] = useState<FormatoAjuste>("percentual");
@@ -115,6 +119,7 @@ export function MovimentacaoForm({
   const depositosItems = Object.fromEntries(depositos.map((d) => [d.id, d.label]));
   const fornecedoresItems = Object.fromEntries(fornecedores.map((f) => [f.id, f.label]));
   const clientesItems = Object.fromEntries(clientes.map((c) => [c.id, c.label]));
+  const vendedoresItems = Object.fromEntries(vendedores.map((v) => [v.id, v.label]));
   const tabelasPrecoItems = Object.fromEntries(tabelasPreco.map((t) => [t.id, t.label]));
 
   const ehEntrada = ENTRADA_TIPOS.has(tipoMovimento);
@@ -293,6 +298,27 @@ export function MovimentacaoForm({
                 {clientes.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="vendedorId" className={labelClass}>Vendedor</Label>
+            <Select
+              name="vendedorId"
+              value={vendedorId}
+              items={vendedoresItems}
+              onValueChange={(valor) => setVendedorId(valor ?? "")}
+            >
+              <SelectTrigger id="vendedorId" className={`w-full ${inputClass}`}>
+                <SelectValue placeholder="Selecione o vendedor" />
+              </SelectTrigger>
+              <SelectContent>
+                {vendedores.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.label}
                   </SelectItem>
                 ))}
               </SelectContent>

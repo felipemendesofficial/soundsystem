@@ -7,10 +7,11 @@ import { OSForm } from "@/components/os-form";
 export default async function NovaOrdemServicoPage() {
   const session = await auth();
 
-  const [clientes, depositos, produtos, servicos, tabelasPreco, itensTabelaPreco, ultimosPrecos] =
+  const [clientes, depositos, vendedores, produtos, servicos, tabelasPreco, itensTabelaPreco, ultimosPrecos] =
     await Promise.all([
       db.cliente.findMany({ orderBy: { nome: "asc" } }),
       db.deposito.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
+      db.vendedor.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
       db.produto.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
       db.servico.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
       db.tabelaPreco.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
@@ -31,6 +32,7 @@ export default async function NovaOrdemServicoPage() {
         action={criarOrdemServico}
         clientes={clientes.map((c) => ({ id: c.id, label: c.nome, tabelaPrecoPadraoId: c.tabelaPrecoPadraoId }))}
         depositos={depositos.map((d) => ({ id: d.id, label: d.nome }))}
+        vendedores={vendedores.map((v) => ({ id: v.id, label: v.nome }))}
         produtos={produtos.map((p) => ({ id: p.id, label: `${p.nome} — ${p.sku}` }))}
         servicos={servicos.map((s) => ({ id: s.id, label: s.nome, precoPadrao: Number(s.precoPadrao) }))}
         tabelasPreco={tabelasPreco.map((t) => ({ id: t.id, label: t.nome }))}

@@ -25,19 +25,21 @@ function formatarMoeda(valor: unknown) {
 export default async function DetalheOrdemServicoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const [os, clientes, depositos, produtos, servicos, tabelasPreco, itensTabelaPreco, ultimosPrecos] =
+  const [os, clientes, depositos, vendedores, produtos, servicos, tabelasPreco, itensTabelaPreco, ultimosPrecos] =
     await Promise.all([
       db.ordemServico.findUnique({
         where: { id },
         include: {
           cliente: true,
           deposito: true,
+          vendedor: true,
           itensProduto: { include: { produto: true } },
           itensServico: { include: { servico: true } },
         },
       }),
       db.cliente.findMany({ orderBy: { nome: "asc" } }),
       db.deposito.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
+      db.vendedor.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
       db.produto.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
       db.servico.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
       db.tabelaPreco.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
@@ -82,6 +84,7 @@ export default async function DetalheOrdemServicoPage({ params }: { params: Prom
           action={atualizarOrdemServico.bind(null, id)}
           clientes={clientes.map((c) => ({ id: c.id, label: c.nome, tabelaPrecoPadraoId: c.tabelaPrecoPadraoId }))}
           depositos={depositos.map((d) => ({ id: d.id, label: d.nome }))}
+          vendedores={vendedores.map((v) => ({ id: v.id, label: v.nome }))}
           produtos={produtos.map((p) => ({ id: p.id, label: `${p.nome} — ${p.sku}` }))}
           servicos={servicos.map((s) => ({ id: s.id, label: s.nome, precoPadrao: Number(s.precoPadrao) }))}
           tabelasPreco={tabelasPreco.map((t) => ({ id: t.id, label: t.nome }))}
@@ -90,6 +93,7 @@ export default async function DetalheOrdemServicoPage({ params }: { params: Prom
           defaultValues={{
             clienteId: os.clienteId,
             depositoId: os.depositoId,
+            vendedorId: os.vendedorId,
             observacao: os.observacao,
             itens: [
               ...os.itensServico.map((i) => ({
@@ -116,6 +120,10 @@ export default async function DetalheOrdemServicoPage({ params }: { params: Prom
               <div className="min-w-0">
                 <div className="mb-1 truncate text-[13px] text-muted-foreground">Depósito</div>
                 <div className="truncate text-[15.5px] font-medium">{os.deposito.nome}</div>
+              </div>
+              <div className="min-w-0">
+                <div className="mb-1 truncate text-[13px] text-muted-foreground">Vendedor</div>
+                <div className="truncate text-[15.5px] font-medium">{os.vendedor.nome}</div>
               </div>
               {os.observacao && (
                 <div className="min-w-0">
