@@ -75,6 +75,8 @@ Aggregate/query results for `Decimal` columns (`quantidadeSaldo`, `custoMedioAtu
 
 Production runs as a **Docker Swarm** stack (`docker-stack.soundsystem.yml`) behind Traefik with Let's Encrypt, at `soundsystem.felipemendesoficial.cloud`. There is no CI/CD — deploys are manual: `git pull` on the swarm manager, `docker build -t soundsystem_app:latest .`, then `docker service update --force soundsystem_app` (required because the image tag is `:latest` and Swarm won't pick up a rebuilt image under the same tag otherwise). Local dev's `docker-compose.yml` is separate and unrelated to the production stack file.
 
+The container's `CMD` runs `npx prisma migrate deploy` before `npm run start` — pending migrations apply automatically on every deploy/restart, no separate manual step. `prisma migrate deploy` is idempotent (no-ops when the schema is already current) and takes its own advisory lock, so this is safe even if the service is ever scaled beyond one replica. Don't move this logic out of the image without putting an equivalent step back in the deploy flow — a schema/code mismatch here previously took the app down in production (queries against columns/tables that didn't exist yet) until it was applied manually.
+
 ## Test users (from `prisma/seed.ts`)
 
 | Perfil | Email | Senha |
