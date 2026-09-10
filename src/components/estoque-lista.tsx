@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 export type ItemEstoque = {
   id: string;
@@ -28,48 +31,72 @@ export function EstoqueLista({
 
   return (
     <div className="space-y-3">
-      <Input
-        value={busca}
-        onChange={(e) => setBusca(e.target.value)}
-        placeholder="Buscar produto por descrição..."
-        aria-label="Buscar produto por descrição"
-      />
+      <div className="relative">
+        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar produto por descrição..."
+          aria-label="Buscar produto por descrição"
+          className="pl-8"
+        />
+      </div>
+
+      {itens.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {filtrados.length === itens.length
+            ? `${itens.length} ${itens.length === 1 ? "item" : "itens"} em estoque`
+            : `${filtrados.length} de ${itens.length} itens`}
+        </p>
+      )}
 
       {filtrados.length === 0 ? (
         <p className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
           {termo ? `Nenhum produto encontrado para "${busca.trim()}".` : emptyMessage}
         </p>
       ) : (
-        <ul className="space-y-2">
-          {filtrados.map((item) => (
-            <li key={item.id} className="rounded-md border p-3">
-              <Link href={`/kardex/${item.produtoId}`} className="font-medium underline underline-offset-2">
-                {item.produtoNome}
-              </Link>
-              <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
-                <div>
-                  <dt className="text-xs text-muted-foreground">Depósito</dt>
-                  <dd className="text-sm">{item.depositoNome}</dd>
+        <ul className="space-y-3">
+          {filtrados.map((item) => {
+            const temCusto = item.custoMedio !== undefined && item.valorTotal !== undefined;
+            return (
+              <li key={item.id} className="rounded-lg border border-border bg-card p-5">
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <h2 className="min-w-0 truncate text-base font-semibold">{item.produtoNome}</h2>
+                  <Badge variant="secondary" className="shrink-0">
+                    {item.depositoNome}
+                  </Badge>
                 </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">Saldo (Qtd.)</dt>
-                  <dd className="text-sm">{item.saldo}</dd>
+
+                <div className={`mb-4 grid gap-2 ${temCusto ? "grid-cols-3" : "grid-cols-1"}`}>
+                  <div className="min-w-0">
+                    <div className="mb-1 truncate text-[13px] text-muted-foreground">Saldo (Qtd.)</div>
+                    <div className="truncate text-[15.5px] font-medium">{item.saldo}</div>
+                  </div>
+                  {temCusto && (
+                    <>
+                      <div className="min-w-0">
+                        <div className="mb-1 truncate text-[13px] text-muted-foreground">Custo Médio</div>
+                        <div className="truncate text-[15.5px] font-medium">{item.custoMedio}</div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="mb-1 truncate text-[13px] text-muted-foreground">Valor Total</div>
+                        <div className="truncate text-[15.5px] font-medium">{item.valorTotal}</div>
+                      </div>
+                    </>
+                  )}
                 </div>
-                {item.custoMedio !== undefined && (
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Custo Médio</dt>
-                    <dd className="text-sm">{item.custoMedio}</dd>
-                  </div>
-                )}
-                {item.valorTotal !== undefined && (
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Valor Total</dt>
-                    <dd className="text-sm">{item.valorTotal}</dd>
-                  </div>
-                )}
-              </dl>
-            </li>
-          ))}
+
+                <Button
+                  render={<Link href={`/kardex/${item.produtoId}`} />}
+                  variant="outline"
+                  size="sm"
+                  className="border-primary text-primary hover:bg-accent hover:text-primary"
+                >
+                  Ver histórico
+                </Button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

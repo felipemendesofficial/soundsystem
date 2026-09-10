@@ -1,9 +1,10 @@
+import { Wallet } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { podeVerCusto } from "@/lib/permissions";
 import { EstoqueLista, type ItemEstoque } from "@/components/estoque-lista";
 import { DepositoFilter } from "@/components/deposito-filter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 
 function formatarNumero(valor: unknown, casas = 3) {
   return Number(valor).toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas });
@@ -51,19 +52,23 @@ export default async function EstoquePage({
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Posição de Estoque</h1>
 
-      <div className="flex flex-wrap items-center gap-4">
-        <DepositoFilter depositos={depositos} />
-        {mostrarCusto && (
-          <Card className="w-fit">
-            <CardHeader className="pb-1">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Valor total (filtro atual)</CardTitle>
-            </CardHeader>
-            <CardContent className="text-xl font-semibold">
-              {valorTotalGeral.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-            </CardContent>
-          </Card>
-        )}
-      </div>
+      {mostrarCusto && (
+        <Card className="bg-primary text-primary-foreground ring-0">
+          <CardContent className="flex items-center gap-4">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary-foreground/15">
+              <Wallet className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-primary-foreground/70">Valor total (filtro atual)</p>
+              <p className="truncate text-xl font-semibold">
+                {valorTotalGeral.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <DepositoFilter depositos={depositos} />
 
       <EstoqueLista
         itens={itensLista}

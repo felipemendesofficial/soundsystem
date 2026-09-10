@@ -45,3 +45,6 @@ next-env.d.ts
 
 # claude code local settings (personal, not for the team)
 .claude/settings.local.json
+
+# local-only docker compose overrides (e.g. remapping ports on a machine with port conflicts)
+docker-compose.override.yml
