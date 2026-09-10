@@ -112,7 +112,7 @@ export function OSForm({
   const depositosItems = Object.fromEntries(depositos.map((d) => [d.id, d.label]));
   const tabelasPrecoItems = Object.fromEntries(tabelasPreco.map((t) => [t.id, t.label]));
 
-  // Mesma lógica de sugestão de preço da Nova Movimentação: preço fixado na
+  // Mesma lógica de sugestão de preço do Lançamento: preço fixado na
   // tabela de preço ativa, senão o último preço de venda já praticado.
   function sugerirPreco(produtoId: string): string {
     const doTabela = tabelaPrecoId ? precosPorTabela[tabelaPrecoId]?.[produtoId] : undefined;
@@ -141,7 +141,7 @@ export function OSForm({
   const linhasComItem = linhas.filter((l) => l.item !== null);
 
   // Desconto/acréscimo total da OS (produtos + serviços juntos), redistribuído
-  // proporcionalmente entre os itens — mesma lógica da Nova Movimentação. O
+  // proporcionalmente entre os itens — mesma lógica do Lançamento. O
   // preço declarado em cada linha continua editável; "preço final" é quem
   // realmente vai no envio.
   const resultadoAjuste = calcularAjusteTotal(

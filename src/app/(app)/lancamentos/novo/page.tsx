@@ -1,9 +1,10 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { obterUltimosPrecosVenda } from "@/lib/tabela-preco";
-import { MovimentacaoForm } from "./movimentacao-form";
+import { LancamentoForm } from "@/components/lancamento-form";
+import { criarLancamento } from "../actions";
 
-export default async function NovaMovimentacaoPage() {
+export default async function NovoLancamentoPage() {
   const session = await auth();
   const perfil = session!.user.perfil;
 
@@ -27,8 +28,9 @@ export default async function NovaMovimentacaoPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Nova Movimentação</h1>
-      <MovimentacaoForm
+      <h1 className="text-2xl font-semibold">Novo Lançamento</h1>
+      <LancamentoForm
+        action={criarLancamento}
         produtos={produtos.map((p) => ({ id: p.id, label: `${p.nome} — ${p.sku}` }))}
         depositos={depositos.map((d) => ({ id: d.id, label: d.nome }))}
         fornecedores={fornecedores.map((f) => ({ id: f.id, label: f.nome }))}

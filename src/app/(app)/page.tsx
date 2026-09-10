@@ -135,8 +135,8 @@ export default async function HomePage() {
 
   const atalhos = [
     {
-      href: "/movimentacoes/nova",
-      titulo: "Nova Movimentação",
+      href: "/lancamentos/novo",
+      titulo: "Novo Lançamento",
       descricao: "Registrar entrada ou saída",
       icon: Plus,
       primary: true,

@@ -1,9 +1,42 @@
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { podeVerCusto } from "@/lib/permissions";
+import { podeLancarMovimentacao, podeVerCusto } from "@/lib/permissions";
 import { DataTable } from "@/components/data-table";
 import { DepositoFilter } from "@/components/deposito-filter";
+import { EstornarMovimentoButton } from "@/components/estornar-movimento-button";
+import { estornarMovimento } from "@/app/(app)/movimentacoes/actions";
+import type { Perfil, TipoMovimento } from "@/generated/prisma/client";
+
+const TIPOS_ESTORNAVEIS = new Set<TipoMovimento>([
+  "compra",
+  "devolucao_cliente",
+  "ajuste_entrada",
+  "venda",
+  "devolucao_fornecedor",
+  "perda_avaria",
+  "uso_interno",
+  "ajuste_saida",
+]);
+
+function podeEstornar(
+  m: {
+    tipoMovimento: TipoMovimento;
+    estornadoEm: Date | null;
+    estornoDeId: string | null;
+    ordemServicoId: string | null;
+    orcamentoId: string | null;
+    lancamentoId: string | null;
+  },
+  perfil: Perfil
+) {
+  if (!podeLancarMovimentacao(perfil)) return false;
+  if (m.estornadoEm || m.estornoDeId) return false;
+  if (m.ordemServicoId || m.orcamentoId || m.lancamentoId) return false;
+  if (!TIPOS_ESTORNAVEIS.has(m.tipoMovimento)) return false;
+  if (perfil === "vendedor" && m.tipoMovimento !== "venda") return false;
+  return true;
+}
 
 const TIPO_LABEL: Record<string, string> = {
   compra: "Compra",
@@ -71,7 +104,16 @@ export default async function KardexPage({
         columns={[
           { header: "Data", cell: (m) => new Date(m.dataMovimento).toLocaleString("pt-BR") },
           { header: "Depósito", cell: (m) => m.deposito.nome },
-          { header: "Tipo", cell: (m) => TIPO_LABEL[m.tipoMovimento] },
+          {
+            header: "Tipo",
+            cell: (m) => (
+              <>
+                {TIPO_LABEL[m.tipoMovimento]}
+                {m.estornoDeId && <span className="block text-xs text-muted-foreground">(estorno)</span>}
+                {m.estornadoEm && <span className="block text-xs text-muted-foreground">Estornado</span>}
+              </>
+            ),
+          },
           { header: "Quantidade", cell: (m) => formatarNumero(m.quantidade) },
           ...(mostrarCusto
             ? [
@@ -95,6 +137,15 @@ export default async function KardexPage({
                 },
               ]
             : []),
+          {
+            header: "Ações",
+            cell: (m) =>
+              podeEstornar(m, perfil) ? (
+                <EstornarMovimentoButton action={estornarMovimento.bind(null, m.id)} />
+              ) : (
+                "-"
+              ),
+          },
         ]}
       />
     </div>

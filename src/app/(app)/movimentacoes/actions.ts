@@ -1,183 +1,59 @@
 "use server";
 
-import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
+  estornarMovimentoNaTransacao,
   mensagemSaldoInsuficiente,
-  registrarEntradaNaTransacao,
-  registrarSaidaNaTransacao,
-  registrarTransferenciaNaTransacao,
+  MovimentoJaEstornadoError,
   SaldoInsuficienteError,
 } from "@/lib/kardex";
-import { normalizarTexto } from "@/lib/texto";
+import { podeLancarMovimentacao } from "@/lib/permissions";
 
 export type MovimentacaoFormState = { erro?: string };
 
-const ENTRADA_TIPOS = new Set(["compra", "devolucao_cliente", "ajuste_entrada"]);
-const SAIDA_TIPOS = new Set(["venda", "devolucao_fornecedor", "perda_avaria", "uso_interno", "ajuste_saida"]);
-
-function parseItens<T extends z.ZodRawShape>(itemSchema: z.ZodObject<T>) {
-  return z.string().transform((valor, ctx) => {
-    let parsedJson: unknown;
-    try {
-      parsedJson = JSON.parse(valor);
-    } catch {
-      ctx.addIssue({ code: "custom", message: "Itens inválidos." });
-      return z.NEVER;
-    }
-    const resultado = z.array(itemSchema).min(1, "Adicione ao menos um item.").safeParse(parsedJson);
-    if (!resultado.success) {
-      ctx.addIssue({ code: "custom", message: resultado.error.issues[0]?.message ?? "Itens inválidos." });
-      return z.NEVER;
-    }
-    return resultado.data;
-  });
-}
-
-const transferenciaSchema = z.object({
-  depositoOrigemId: z.string().min(1, "Selecione o depósito de origem."),
-  depositoDestinoId: z.string().min(1, "Selecione o depósito de destino."),
-  observacao: z.string().trim().transform(normalizarTexto).optional(),
-  itens: parseItens(
-    z.object({
-      produtoId: z.string().min(1, "Selecione o produto."),
-      quantidade: z.coerce.number().positive("Quantidade deve ser maior que zero."),
-    })
-  ),
-});
-
-const entradaSchema = z.object({
-  depositoId: z.string().min(1, "Selecione o depósito."),
-  fornecedorId: z.string().trim().optional(),
-  observacao: z.string().trim().transform(normalizarTexto).optional(),
-  itens: parseItens(
-    z.object({
-      produtoId: z.string().min(1, "Selecione o produto."),
-      quantidade: z.coerce.number().positive("Quantidade deve ser maior que zero."),
-      custoUnitario: z.coerce.number().nonnegative("Custo não pode ser negativo."),
-    })
-  ),
-});
-
-const saidaSchema = z.object({
-  depositoId: z.string().min(1, "Selecione o depósito."),
-  clienteId: z.string().trim().optional(),
-  vendedorId: z.string().trim().optional(),
-  observacao: z.string().trim().transform(normalizarTexto).optional(),
-  itens: parseItens(
-    z.object({
-      produtoId: z.string().min(1, "Selecione o produto."),
-      quantidade: z.coerce.number().positive("Quantidade deve ser maior que zero."),
-      precoVenda: z.coerce.number().nonnegative("Preço não pode ser negativo.").optional(),
-    })
-  ),
-});
-
-export async function registrarMovimento(
+/**
+ * Estorna um movimento avulso legado (de antes do Lançamento existir como
+ * entidade — ver src/app/(app)/lancamentos) para corrigir erro de
+ * lançamento: gera o inverso exato do movimento e marca o original como
+ * estornado (ver `estornarMovimentoNaTransacao` em src/lib/kardex.ts).
+ */
+export async function estornarMovimento(
+  id: string,
   _prev: MovimentacaoFormState,
-  formData: FormData
+  _formData: FormData
 ): Promise<MovimentacaoFormState> {
   const session = await auth();
   if (!session?.user) return { erro: "Não autenticado." };
-  const usuarioId = session.user.id;
-  const perfil = session.user.perfil;
+  const { perfil, id: usuarioId } = session.user;
 
-  const tipoMovimento = String(formData.get("tipoMovimento") ?? "");
+  if (!podeLancarMovimentacao(perfil)) {
+    return { erro: "Seu perfil não pode estornar movimentações." };
+  }
 
-  if (perfil === "vendedor" && tipoMovimento !== "venda") {
-    return { erro: "Seu perfil só pode registrar vendas." };
+  const movimento = await db.movimentacao.findUnique({ where: { id } });
+  if (!movimento) return { erro: "Movimento não encontrado." };
+  if (perfil === "vendedor" && movimento.tipoMovimento !== "venda") {
+    return { erro: "Seu perfil só pode estornar vendas." };
   }
 
   try {
-    if (tipoMovimento === "transferencia") {
-      const parsed = transferenciaSchema.safeParse({
-        depositoOrigemId: formData.get("depositoOrigemId"),
-        depositoDestinoId: formData.get("depositoDestinoId"),
-        observacao: formData.get("observacao"),
-        itens: formData.get("itens"),
-      });
-      if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
-
-      await db.$transaction(async (tx) => {
-        for (const item of parsed.data.itens) {
-          await registrarTransferenciaNaTransacao(tx, {
-            produtoId: item.produtoId,
-            depositoOrigemId: parsed.data.depositoOrigemId,
-            depositoDestinoId: parsed.data.depositoDestinoId,
-            quantidade: item.quantidade,
-            usuarioId,
-            observacao: parsed.data.observacao,
-          });
-        }
-      });
-    } else if (ENTRADA_TIPOS.has(tipoMovimento)) {
-      const parsed = entradaSchema.safeParse({
-        depositoId: formData.get("depositoId"),
-        fornecedorId: formData.get("fornecedorId") || undefined,
-        observacao: formData.get("observacao"),
-        itens: formData.get("itens"),
-      });
-      if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
-
-      await db.$transaction(async (tx) => {
-        for (const item of parsed.data.itens) {
-          await registrarEntradaNaTransacao(tx, {
-            produtoId: item.produtoId,
-            depositoId: parsed.data.depositoId,
-            quantidade: item.quantidade,
-            custoUnitario: item.custoUnitario,
-            fornecedorId: parsed.data.fornecedorId || undefined,
-            observacao: parsed.data.observacao,
-            tipoMovimento: tipoMovimento as "compra" | "devolucao_cliente" | "ajuste_entrada",
-            usuarioId,
-          });
-        }
-      });
-    } else if (SAIDA_TIPOS.has(tipoMovimento)) {
-      const parsed = saidaSchema.safeParse({
-        depositoId: formData.get("depositoId"),
-        clienteId: formData.get("clienteId") || undefined,
-        vendedorId: formData.get("vendedorId") || undefined,
-        observacao: formData.get("observacao"),
-        itens: formData.get("itens"),
-      });
-      if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
-      if (tipoMovimento === "venda" && !parsed.data.vendedorId) {
-        return { erro: "Selecione o vendedor." };
-      }
-
-      await db.$transaction(async (tx) => {
-        for (const item of parsed.data.itens) {
-          await registrarSaidaNaTransacao(tx, {
-            produtoId: item.produtoId,
-            depositoId: parsed.data.depositoId,
-            quantidade: item.quantidade,
-            precoVenda: item.precoVenda,
-            clienteId: parsed.data.clienteId || undefined,
-            vendedorId: parsed.data.vendedorId || undefined,
-            observacao: parsed.data.observacao,
-            tipoMovimento: tipoMovimento as
-              | "venda"
-              | "devolucao_fornecedor"
-              | "perda_avaria"
-              | "uso_interno"
-              | "ajuste_saida",
-            usuarioId,
-          });
-        }
-      });
-    } else {
-      return { erro: "Tipo de movimento inválido." };
-    }
+    await db.$transaction((tx) =>
+      estornarMovimentoNaTransacao(tx, {
+        movimentoId: id,
+        usuarioId,
+        observacao: `Estorno do lançamento de ${new Date(movimento.dataMovimento).toLocaleDateString("pt-BR")}`,
+      })
+    );
   } catch (error) {
     if (error instanceof SaldoInsuficienteError) return { erro: await mensagemSaldoInsuficiente(error) };
+    if (error instanceof MovimentoJaEstornadoError) return { erro: error.message };
     if (error instanceof Error) return { erro: error.message };
     throw error;
   }
 
+  revalidatePath(`/kardex/${movimento.produtoId}`);
   revalidatePath("/estoque");
-  redirect("/estoque?sucesso=1");
+  return {};
 }

@@ -107,11 +107,12 @@ export type RegistrarEntradaInput = {
   observacao?: string;
   dataMovimento?: Date;
   orcamentoId?: string;
+  lancamentoId?: string;
 };
 
 /**
  * Mesma lógica de `registrarEntrada`, mas recebendo a transação de fora —
- * permite agrupar várias entradas (ex.: uma Nova Movimentação com vários
+ * permite agrupar várias entradas (ex.: um Lançamento com vários
  * produtos) na mesma transação atômica, tudo-ou-nada.
  */
 export async function registrarEntradaNaTransacao(
@@ -145,6 +146,7 @@ export async function registrarEntradaNaTransacao(
         usuarioId: input.usuarioId,
         observacao: input.observacao,
         orcamentoId: input.orcamentoId,
+        lancamentoId: input.lancamentoId,
       },
     });
   }
@@ -183,6 +185,7 @@ export async function registrarEntradaNaTransacao(
       usuarioId: input.usuarioId,
       observacao: input.observacao,
       orcamentoId: input.orcamentoId,
+      lancamentoId: input.lancamentoId,
     },
   });
 }
@@ -207,6 +210,7 @@ export type RegistrarSaidaInput = {
   observacao?: string;
   dataMovimento?: Date;
   ordemServicoId?: string;
+  lancamentoId?: string;
 };
 
 /**
@@ -242,6 +246,7 @@ export async function registrarSaidaNaTransacao(
         usuarioId: input.usuarioId,
         observacao: input.observacao,
         ordemServicoId: input.ordemServicoId,
+        lancamentoId: input.lancamentoId,
       },
     });
   }
@@ -280,6 +285,7 @@ export async function registrarSaidaNaTransacao(
       usuarioId: input.usuarioId,
       observacao: input.observacao,
       ordemServicoId: input.ordemServicoId,
+      lancamentoId: input.lancamentoId,
     },
   });
 }
@@ -300,11 +306,12 @@ export type RegistrarTransferenciaInput = {
   quantidade: number | string;
   usuarioId: string;
   observacao?: string;
+  lancamentoId?: string;
 };
 
 /**
  * Mesma lógica de `registrarTransferencia`, mas recebendo a transação de
- * fora — permite agrupar várias transferências (ex.: uma Nova Movimentação
+ * fora — permite agrupar várias transferências (ex.: um Lançamento
  * com vários produtos) na mesma transação atômica, tudo-ou-nada.
  */
 export async function registrarTransferenciaNaTransacao(
@@ -333,6 +340,7 @@ export async function registrarTransferenciaNaTransacao(
         saldoValorApos: zero,
         usuarioId: input.usuarioId,
         observacao: input.observacao,
+        lancamentoId: input.lancamentoId,
       },
     });
     const entrada = await tx.movimentacao.create({
@@ -346,6 +354,7 @@ export async function registrarTransferenciaNaTransacao(
         saldoValorApos: zero,
         usuarioId: input.usuarioId,
         observacao: input.observacao,
+        lancamentoId: input.lancamentoId,
       },
     });
     return { saida, entrada };
@@ -384,6 +393,7 @@ export async function registrarTransferenciaNaTransacao(
       saldoValorApos: novoValorOrigem,
       usuarioId: input.usuarioId,
       observacao: input.observacao,
+      lancamentoId: input.lancamentoId,
     },
   });
 
@@ -416,6 +426,7 @@ export async function registrarTransferenciaNaTransacao(
       saldoValorApos: novoValorTotalDestino,
       usuarioId: input.usuarioId,
       observacao: input.observacao,
+      lancamentoId: input.lancamentoId,
     },
   });
 
@@ -527,4 +538,176 @@ export async function estornarEntradaNaTransacao(
       orcamentoId: input.orcamentoId,
     },
   });
+}
+
+export class MovimentoJaEstornadoError extends Error {
+  constructor() {
+    super("Este movimento já foi estornado.");
+    this.name = "MovimentoJaEstornadoError";
+  }
+}
+
+const TIPOS_ENTRADA_ESTORNAVEL = new Set<TipoMovimento>(["compra", "devolucao_cliente", "ajuste_entrada"]);
+const TIPOS_SAIDA_ESTORNAVEL = new Set<TipoMovimento>([
+  "venda",
+  "devolucao_fornecedor",
+  "perda_avaria",
+  "uso_interno",
+  "ajuste_saida",
+]);
+
+export type EstornarMovimentoInput = {
+  movimentoId: string;
+  usuarioId: string;
+  observacao?: string;
+};
+
+/**
+ * Núcleo do estorno de UMA linha de movimento — usado tanto pelo estorno
+ * avulso (`estornarMovimentoNaTransacao`, movimentos sem dono) quanto pelo
+ * `cancelarFechamentoLancamento` (src/app/(app)/lancamentos/actions.ts), que
+ * chama isto diretamente por já ser o "dono" legítimo do movimento.
+ * Gera um lançamento inverso EXATO (não um novo lançamento genérico ao custo
+ * médio vigente) e marca o original como estornado, impedindo estorno
+ * duplicado:
+ *
+ * Entrada → estornada como uma saída (`ajuste_saida`) que subtrai a
+ * quantidade/valor exatos que a entrada somou, igual a `estornarEntradaNaTransacao`.
+ * Saída → estornada como uma entrada (`ajuste_entrada`) que devolve a
+ * quantidade ao custo médio vigente NO MOMENTO daquela saída
+ * (`custoMedioApos` do original, que saídas nunca alteram) — o inverso exato
+ * da operação, simétrico ao caso de entrada.
+ */
+export async function estornarLinhaDeMovimentoNaTransacao(
+  tx: Prisma.TransactionClient,
+  original: Movimentacao,
+  usuarioId: string,
+  observacao?: string
+): Promise<Movimentacao> {
+  if (original.estornadoEm || original.estornoDeId) {
+    throw new MovimentoJaEstornadoError();
+  }
+
+  const ehEntrada = TIPOS_ENTRADA_ESTORNAVEL.has(original.tipoMovimento);
+  const ehSaida = TIPOS_SAIDA_ESTORNAVEL.has(original.tipoMovimento);
+  if (!ehEntrada && !ehSaida) {
+    throw new Error("Esse tipo de movimento não pode ser estornado por aqui.");
+  }
+
+  const quantidade = original.quantidade;
+  const tipoEstorno = ehEntrada ? TipoMovimento.ajuste_saida : TipoMovimento.ajuste_entrada;
+  // Custo ao qual o estorno deve mexer no saldo: o custo unitário da entrada
+  // original (se for entrada) ou o custo médio vigente na saída original
+  // (se for saída — saídas nunca alteram a média, então é o mesmo custo
+  // médio de antes e de depois daquela saída).
+  const custoDoEstorno = ehEntrada ? (original.custoUnitario ?? new Prisma.Decimal(0)) : original.custoMedioApos;
+
+  let estorno: Movimentacao;
+
+  if (!(await produtoControlaEstoque(tx, original.produtoId))) {
+    const zero = new Prisma.Decimal(0);
+    estorno = await tx.movimentacao.create({
+      data: {
+        produtoId: original.produtoId,
+        depositoId: original.depositoId,
+        tipoMovimento: tipoEstorno,
+        quantidade,
+        custoUnitario: ehEntrada ? custoDoEstorno : undefined,
+        custoMedioApos: zero,
+        saldoQuantidadeApos: zero,
+        saldoValorApos: zero,
+        usuarioId,
+        observacao,
+        estornoDeId: original.id,
+      },
+    });
+  } else {
+    const estoque = await obterOuCriarEstoqueTravado(tx, original.produtoId, original.depositoId);
+
+    if (ehEntrada) {
+      if (quantidade.greaterThan(estoque.quantidadeSaldo)) {
+        throw new SaldoInsuficienteError(original.produtoId, estoque.quantidadeSaldo, quantidade);
+      }
+      const novaQuantidade = estoque.quantidadeSaldo.minus(quantidade);
+      const novoValorTotalBruto = estoque.valorTotalSaldo.minus(quantidade.times(custoDoEstorno));
+      // Guarda contra deriva: outras movimentações podem ter alterado a média
+      // entre o lançamento original e este estorno; nunca deixamos o valor
+      // total do saldo ficar negativo por causa disso.
+      const novoValorTotal = novoValorTotalBruto.lessThan(0) ? new Prisma.Decimal(0) : novoValorTotalBruto;
+      const novoCustoMedio = novaQuantidade.isZero() ? new Prisma.Decimal(0) : novoValorTotal.dividedBy(novaQuantidade);
+
+      await tx.produtoEstoque.update({
+        where: { id: estoque.id },
+        data: { quantidadeSaldo: novaQuantidade, custoMedioAtual: novoCustoMedio, valorTotalSaldo: novoValorTotal },
+      });
+
+      estorno = await tx.movimentacao.create({
+        data: {
+          produtoId: original.produtoId,
+          depositoId: original.depositoId,
+          tipoMovimento: tipoEstorno,
+          quantidade,
+          custoUnitario: custoDoEstorno,
+          custoMedioApos: novoCustoMedio,
+          saldoQuantidadeApos: novaQuantidade,
+          saldoValorApos: novoValorTotal,
+          usuarioId,
+          observacao,
+          estornoDeId: original.id,
+        },
+      });
+    } else {
+      const novaQuantidade = estoque.quantidadeSaldo.plus(quantidade);
+      const novoValorTotal = estoque.valorTotalSaldo.plus(quantidade.times(custoDoEstorno));
+      const novoCustoMedio = novaQuantidade.isZero() ? new Prisma.Decimal(0) : novoValorTotal.dividedBy(novaQuantidade);
+
+      await tx.produtoEstoque.update({
+        where: { id: estoque.id },
+        data: { quantidadeSaldo: novaQuantidade, custoMedioAtual: novoCustoMedio, valorTotalSaldo: novoValorTotal },
+      });
+
+      estorno = await tx.movimentacao.create({
+        data: {
+          produtoId: original.produtoId,
+          depositoId: original.depositoId,
+          tipoMovimento: tipoEstorno,
+          quantidade,
+          custoMedioApos: novoCustoMedio,
+          saldoQuantidadeApos: novaQuantidade,
+          saldoValorApos: novoValorTotal,
+          usuarioId,
+          observacao,
+          estornoDeId: original.id,
+        },
+      });
+    }
+  }
+
+  await tx.movimentacao.update({ where: { id: original.id }, data: { estornadoEm: new Date() } });
+
+  return estorno;
+}
+
+/**
+ * Estorna um movimento avulso (sem dono) para corrigir erro de lançamento —
+ * usado pelo botão "Estornar" da Ficha Kardex, hoje relevante só pra
+ * movimentos legados de antes do Lançamento existir como entidade. Movimentos
+ * de Ordem de Serviço, Orçamento de Compra ou Lançamento têm fluxo de estorno
+ * próprio (cancelar a OS / cancelar o fechamento do orçamento ou lançamento)
+ * e são rejeitados aqui — ver `estornarLinhaDeMovimentoNaTransacao` para o
+ * núcleo do estorno, reaproveitado por quem já é o dono legítimo do movimento.
+ */
+export async function estornarMovimentoNaTransacao(
+  tx: Prisma.TransactionClient,
+  input: EstornarMovimentoInput
+): Promise<Movimentacao> {
+  const original = await tx.movimentacao.findUniqueOrThrow({ where: { id: input.movimentoId } });
+
+  if (original.ordemServicoId || original.orcamentoId || original.lancamentoId) {
+    throw new Error(
+      "Movimentos de Ordem de Serviço, Orçamento de Compra ou Lançamento devem ser estornados por lá."
+    );
+  }
+
+  return estornarLinhaDeMovimentoNaTransacao(tx, original, input.usuarioId, input.observacao);
 }

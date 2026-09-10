@@ -64,6 +64,23 @@ enum TipoComissao {
   fixa
 }
 
+enum TipoLancamento {
+  compra
+  devolucao_cliente
+  ajuste_entrada
+  venda
+  devolucao_fornecedor
+  perda_avaria
+  uso_interno
+  ajuste_saida
+  transferencia
+}
+
+enum StatusLancamento {
+  aberto
+  fechado
+}
+
 model Deposito {
   id       String   @id @default(uuid())
   nome     String
@@ -71,11 +88,14 @@ model Deposito {
   ativo    Boolean  @default(true)
   criadoEm DateTime @default(now()) @map("criado_em")
 
-  usuariosPadrao  Usuario[]        @relation("UsuarioDepositoPadrao")
-  produtoEstoques ProdutoEstoque[]
-  movimentacoes   Movimentacao[]
-  ordensServico   OrdemServico[]
-  orcamentos      Orcamento[]
+  usuariosPadrao     Usuario[]        @relation("UsuarioDepositoPadrao")
+  produtoEstoques    ProdutoEstoque[]
+  movimentacoes      Movimentacao[]
+  ordensServico      OrdemServico[]
+  orcamentos         Orcamento[]
+  lancamentos        Lancamento[]     @relation("LancamentoDeposito")
+  lancamentosOrigem  Lancamento[]     @relation("LancamentoDepositoOrigem")
+  lancamentosDestino Lancamento[]     @relation("LancamentoDepositoDestino")
 
   @@map("depositos")
 }
@@ -94,6 +114,7 @@ model Usuario {
   movimentacoes  Movimentacao[]
   ordensServico  OrdemServico[]
   orcamentos     Orcamento[]
+  lancamentos    Lancamento[]
 
   @@map("usuarios")
 }
@@ -109,6 +130,7 @@ model Fornecedor {
 
   movimentacoes Movimentacao[]
   orcamentos    Orcamento[]
+  lancamentos   Lancamento[]
 
   @@map("fornecedores")
 }
@@ -125,6 +147,7 @@ model Cliente {
   tabelaPrecoPadrao TabelaPreco?   @relation(fields: [tabelaPrecoPadraoId], references: [id])
   movimentacoes     Movimentacao[]
   ordensServico     OrdemServico[]
+  lancamentos       Lancamento[]
 
   @@map("clientes")
 }
@@ -144,6 +167,7 @@ model Vendedor {
 
   movimentacoes Movimentacao[]
   ordensServico OrdemServico[]
+  lancamentos   Lancamento[]
 
   @@map("vendedores")
 }
@@ -220,6 +244,7 @@ model Produto {
   itensOS          ItemOrdemServicoProduto[]
   itensOrcamento   ItemOrcamento[]
   itensTabelaPreco ItemTabelaPreco[]
+  itensLancamento  ItemLancamento[]
 
   @@map("produtos")
 }
@@ -258,20 +283,79 @@ model Movimentacao {
   usuarioId           String        @map("usuario_id")
   ordemServicoId      String?       @map("ordem_servico_id")
   orcamentoId         String?       @map("orcamento_id")
+  lancamentoId        String?       @map("lancamento_id")
   observacao          String?
+  estornadoEm         DateTime?     @map("estornado_em")
+  estornoDeId         String?       @map("estorno_de_id")
   criadoEm            DateTime      @default(now()) @map("criado_em")
 
-  produto      Produto       @relation(fields: [produtoId], references: [id])
-  deposito     Deposito      @relation(fields: [depositoId], references: [id])
-  cliente      Cliente?      @relation(fields: [clienteId], references: [id])
-  fornecedor   Fornecedor?   @relation(fields: [fornecedorId], references: [id])
-  vendedor     Vendedor?     @relation(fields: [vendedorId], references: [id])
-  usuario      Usuario       @relation(fields: [usuarioId], references: [id])
-  ordemServico OrdemServico? @relation(fields: [ordemServicoId], references: [id])
-  orcamento    Orcamento?    @relation(fields: [orcamentoId], references: [id])
+  produto      Produto        @relation(fields: [produtoId], references: [id])
+  deposito     Deposito       @relation(fields: [depositoId], references: [id])
+  cliente      Cliente?       @relation(fields: [clienteId], references: [id])
+  fornecedor   Fornecedor?    @relation(fields: [fornecedorId], references: [id])
+  vendedor     Vendedor?      @relation(fields: [vendedorId], references: [id])
+  usuario      Usuario        @relation(fields: [usuarioId], references: [id])
+  ordemServico OrdemServico?  @relation(fields: [ordemServicoId], references: [id])
+  orcamento    Orcamento?     @relation(fields: [orcamentoId], references: [id])
+  lancamento   Lancamento?    @relation(fields: [lancamentoId], references: [id])
+  estornoDe    Movimentacao?  @relation("EstornoMovimentacao", fields: [estornoDeId], references: [id])
+  estornos     Movimentacao[] @relation("EstornoMovimentacao")
 
   @@index([produtoId, depositoId, dataMovimento])
   @@map("movimentacoes")
+}
+
+/// Lançamento de estoque avulso (fora de OS/Orçamento): agrupa itens de UM
+/// único tipo de movimento sob um cabeçalho com status Aberto/Fechado, mesmo
+/// critério de OS/Orçamento — enquanto aberto só existe o rascunho (nenhum
+/// efeito no Kardex); "Finalizar" lança TODOS os itens de uma vez
+/// (`finalizarLancamento`); "Cancelar Fechamento" estorna TODOS de uma vez
+/// (`cancelarFechamentoLancamento`, reaproveitando `estornarMovimentoNaTransacao`
+/// de src/lib/kardex.ts) e volta pra aberto, pronto pra editar e refechar.
+/// Transferência é EXCEÇÃO deliberada: uma vez fechada, fica permanente (sem
+/// "Cancelar Fechamento") — mesmo critério da conclusão de uma OS hoje.
+model Lancamento {
+  id                String           @id @default(uuid())
+  numero            Int              @unique @default(autoincrement())
+  tipo              TipoLancamento
+  status            StatusLancamento @default(aberto)
+  depositoId        String?          @map("deposito_id")
+  depositoOrigemId  String?          @map("deposito_origem_id")
+  depositoDestinoId String?          @map("deposito_destino_id")
+  fornecedorId      String?          @map("fornecedor_id")
+  clienteId         String?          @map("cliente_id")
+  vendedorId        String?          @map("vendedor_id")
+  usuarioId         String           @map("usuario_id")
+  observacao        String?
+  criadoEm          DateTime         @default(now()) @map("criado_em")
+  fechadoEm         DateTime?        @map("fechado_em")
+  reabertoEm        DateTime?        @map("reaberto_em")
+
+  deposito        Deposito?        @relation("LancamentoDeposito", fields: [depositoId], references: [id])
+  depositoOrigem  Deposito?        @relation("LancamentoDepositoOrigem", fields: [depositoOrigemId], references: [id])
+  depositoDestino Deposito?        @relation("LancamentoDepositoDestino", fields: [depositoDestinoId], references: [id])
+  fornecedor      Fornecedor?      @relation(fields: [fornecedorId], references: [id])
+  cliente         Cliente?         @relation(fields: [clienteId], references: [id])
+  vendedor        Vendedor?        @relation(fields: [vendedorId], references: [id])
+  usuario         Usuario          @relation(fields: [usuarioId], references: [id])
+  itens           ItemLancamento[]
+  movimentacoes   Movimentacao[]
+
+  @@map("lancamentos")
+}
+
+model ItemLancamento {
+  id            String   @id @default(uuid())
+  lancamentoId  String   @map("lancamento_id")
+  produtoId     String   @map("produto_id")
+  quantidade    Decimal  @db.Decimal(14, 3)
+  custoUnitario Decimal? @map("custo_unitario") @db.Decimal(14, 4)
+  precoVenda    Decimal? @map("preco_venda") @db.Decimal(14, 2)
+
+  lancamento Lancamento @relation(fields: [lancamentoId], references: [id], onDelete: Cascade)
+  produto    Produto    @relation(fields: [produtoId], references: [id])
+
+  @@map("lancamento_itens")
 }
 
 model Servico {

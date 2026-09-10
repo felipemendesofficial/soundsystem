@@ -19,6 +19,7 @@ import {
   Calculator,
   Tag,
   BadgePercent,
+  History,
   LogOut,
 } from "lucide-react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
@@ -29,7 +30,7 @@ import { signOutAction } from "@/lib/actions/auth-actions";
 const NAV_ITEMS = [
   { href: "/", label: "Início", icon: Home },
   { href: "/produtos", label: "Produtos", icon: Package },
-  { href: "/movimentacoes/nova", label: "Movimentar", icon: Plus },
+  { href: "/lancamentos/novo", label: "Movimentar", icon: Plus },
   { href: "/estoque", label: "Estoque", icon: ClipboardList },
 ];
 
@@ -41,6 +42,7 @@ const MAIS_ROUTES = [
   "/unidades-medida",
   "/servicos",
   "/ordens-servico",
+  "/lancamentos",
   "/usuarios",
 ];
 
@@ -173,6 +175,13 @@ export function BottomNav({
               >
                 <ListChecks className="size-[18px] flex-none text-primary" />
                 <span className="text-[13.5px] font-medium">Ordens de Serviço</span>
+              </DialogClose>
+              <DialogClose
+                render={<Link href="/lancamentos" />}
+                className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
+              >
+                <History className="size-[18px] flex-none text-primary" />
+                <span className="text-[13.5px] font-medium">Lançamentos</span>
               </DialogClose>
               {podeVerOrcamentos && (
                 <DialogClose

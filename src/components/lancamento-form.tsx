@@ -17,8 +17,10 @@ import {
   ComboboxItem,
   ComboboxList,
 } from "@/components/ui/combobox";
-import { registrarMovimento, type MovimentacaoFormState } from "../actions";
+import type { LancamentoFormState } from "@/app/(app)/lancamentos/actions";
 import { calcularAjusteTotal, type FormatoAjuste, type ModoAjuste } from "@/lib/ajuste-total";
+
+type Action = (prevState: LancamentoFormState, formData: FormData) => Promise<LancamentoFormState>;
 
 const ENTRADA_TIPOS = new Set(["compra", "devolucao_cliente", "ajuste_entrada"]);
 const SAIDA_TIPOS = new Set(["venda", "devolucao_fornecedor", "perda_avaria", "uso_interno", "ajuste_saida"]);
@@ -46,8 +48,6 @@ const TODOS_OS_TIPOS = [
   "ajuste_saida",
   "transferencia",
 ];
-
-const estadoInicial: MovimentacaoFormState = {};
 
 type Item = { id: string; label: string };
 type ClienteItem = Item & { tabelaPrecoPadraoId: string | null };
@@ -78,7 +78,8 @@ function formatarMoeda(valor: number) {
 const labelClass = "text-[15px] font-semibold";
 const inputClass = "h-11 px-3.5 text-base bg-card";
 
-export function MovimentacaoForm({
+export function LancamentoForm({
+  action,
   produtos,
   depositos,
   fornecedores,
@@ -89,7 +90,9 @@ export function MovimentacaoForm({
   ultimosPrecosVenda,
   perfil,
   depositoPadraoId,
+  defaultValues,
 }: {
+  action: Action;
   produtos: Item[];
   depositos: Item[];
   fornecedores: Item[];
@@ -99,17 +102,38 @@ export function MovimentacaoForm({
   precosPorTabela: Record<string, Record<string, number>>;
   ultimosPrecosVenda: Record<string, number>;
   perfil: string;
-  depositoPadraoId: string | null;
+  depositoPadraoId?: string | null;
+  defaultValues?: {
+    tipo: string;
+    depositoId: string | null;
+    depositoOrigemId: string | null;
+    depositoDestinoId: string | null;
+    fornecedorId: string | null;
+    clienteId: string | null;
+    vendedorId: string | null;
+    observacao: string | null;
+    itens: { produtoId: string; label: string; quantidade: string; custoUnitario: string; precoVenda: string }[];
+  };
 }) {
+  const editando = defaultValues !== undefined;
   const tiposDisponiveis = perfil === "vendedor" ? ["venda"] : TODOS_OS_TIPOS;
-  const [tipoMovimento, setTipoMovimento] = useState(tiposDisponiveis[0]);
-  const [state, formAction, pending] = useActionState(registrarMovimento, estadoInicial);
-  const [linhas, setLinhas] = useState<Linha[]>(() => [linhaVazia()]);
+  const [tipoMovimento, setTipoMovimento] = useState(defaultValues?.tipo ?? tiposDisponiveis[0]);
+  const [state, formAction, pending] = useActionState(action, {});
+  const [linhas, setLinhas] = useState<Linha[]>(
+    () =>
+      defaultValues?.itens.map((i) => ({
+        key: novaChave(),
+        produto: { id: i.produtoId, label: i.label },
+        quantidade: i.quantidade,
+        custoUnitario: i.custoUnitario,
+        precoVenda: i.precoVenda,
+      })) ?? [linhaVazia()]
+  );
   // "" (nunca undefined) mesmo sem seleção — Select vira controlado assim que
   // recebe `value`; alternar de undefined pra string depois dispara warning
   // do React de componente trocando de não-controlado pra controlado.
-  const [clienteId, setClienteId] = useState("");
-  const [vendedorId, setVendedorId] = useState("");
+  const [clienteId, setClienteId] = useState(defaultValues?.clienteId ?? "");
+  const [vendedorId, setVendedorId] = useState(defaultValues?.vendedorId ?? "");
   const [tabelaPrecoId, setTabelaPrecoId] = useState("");
   const [modoAjuste, setModoAjuste] = useState<ModoAjuste>("nenhum");
   const [formatoAjuste, setFormatoAjuste] = useState<FormatoAjuste>("percentual");
@@ -153,9 +177,9 @@ export function MovimentacaoForm({
 
   const linhasComProduto = linhas.filter((l) => l.produto !== null);
 
-  // Desconto/acréscimo total da venda, redistribuído proporcionalmente entre
-  // os itens — o preço declarado em cada linha continua editável e visível;
-  // o "preço final" abaixo é só quem realmente vai no envio.
+  // Desconto/acréscimo total, redistribuído proporcionalmente entre os itens
+  // — o preço declarado em cada linha continua editável e visível; o "preço
+  // final" abaixo é só quem realmente vai no envio.
   const resultadoAjuste = calcularAjusteTotal(
     linhasComProduto.map((l) => ({ quantidade: Number(l.quantidade) || 0, precoDeclarado: Number(l.precoVenda) || 0 })),
     { modo: modoAjuste, formato: formatoAjuste, valor: Number(valorAjuste) || 0 }
@@ -183,36 +207,46 @@ export function MovimentacaoForm({
 
   return (
     <form action={formAction} className="max-w-lg space-y-6">
-      <input type="hidden" name="tipoMovimento" value={tipoMovimento} />
+      <input type="hidden" name="tipo" value={tipoMovimento} />
       <input type="hidden" name="itens" value={itensSerializados} />
 
       <div className="space-y-2">
-        <Label htmlFor="tipoMovimentoSelect" className={labelClass}>Tipo de Movimento</Label>
-        <Select
-          value={tipoMovimento}
-          items={tiposItems}
-          onValueChange={(valor) => {
-            if (valor) setTipoMovimento(valor);
-          }}
-        >
-          <SelectTrigger id="tipoMovimentoSelect" className={`w-full ${inputClass}`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {tiposDisponiveis.map((tipo) => (
-              <SelectItem key={tipo} value={tipo}>
-                {TIPOS_LABEL[tipo]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Label htmlFor="tipoMovimentoSelect" className={labelClass}>Tipo de Lançamento</Label>
+        {editando ? (
+          <p className="rounded-md border border-border bg-muted px-3.5 py-2.5 text-base">
+            {TIPOS_LABEL[tipoMovimento]}
+          </p>
+        ) : (
+          <Select
+            value={tipoMovimento}
+            items={tiposItems}
+            onValueChange={(valor) => {
+              if (valor) setTipoMovimento(valor);
+            }}
+          >
+            <SelectTrigger id="tipoMovimentoSelect" className={`w-full ${inputClass}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {tiposDisponiveis.map((tipo) => (
+                <SelectItem key={tipo} value={tipo}>
+                  {TIPOS_LABEL[tipo]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {ehTransferencia ? (
         <>
           <div className="space-y-2">
             <Label htmlFor="depositoOrigemId" className={labelClass}>Depósito de Origem</Label>
-            <Select name="depositoOrigemId" defaultValue={depositoPadraoId ?? undefined} items={depositosItems}>
+            <Select
+              name="depositoOrigemId"
+              defaultValue={defaultValues?.depositoOrigemId ?? depositoPadraoId ?? undefined}
+              items={depositosItems}
+            >
               <SelectTrigger id="depositoOrigemId" className={`w-full ${inputClass}`}>
                 <SelectValue placeholder="Selecione o depósito" />
               </SelectTrigger>
@@ -227,7 +261,7 @@ export function MovimentacaoForm({
           </div>
           <div className="space-y-2">
             <Label htmlFor="depositoDestinoId" className={labelClass}>Depósito de Destino</Label>
-            <Select name="depositoDestinoId" items={depositosItems}>
+            <Select name="depositoDestinoId" defaultValue={defaultValues?.depositoDestinoId ?? undefined} items={depositosItems}>
               <SelectTrigger id="depositoDestinoId" className={`w-full ${inputClass}`}>
                 <SelectValue placeholder="Selecione o depósito" />
               </SelectTrigger>
@@ -244,7 +278,7 @@ export function MovimentacaoForm({
       ) : (
         <div className="space-y-2">
           <Label htmlFor="depositoId" className={labelClass}>Depósito</Label>
-          <Select name="depositoId" defaultValue={depositoPadraoId ?? undefined} items={depositosItems}>
+          <Select name="depositoId" defaultValue={defaultValues?.depositoId ?? depositoPadraoId ?? undefined} items={depositosItems}>
             <SelectTrigger id="depositoId" className={`w-full ${inputClass}`}>
               <SelectValue placeholder="Selecione o depósito" />
             </SelectTrigger>
@@ -262,7 +296,7 @@ export function MovimentacaoForm({
       {ehEntrada && (
         <div className="space-y-2">
           <Label htmlFor="fornecedorId" className={labelClass}>Fornecedor</Label>
-          <Select name="fornecedorId" items={fornecedoresItems}>
+          <Select name="fornecedorId" defaultValue={defaultValues?.fornecedorId ?? undefined} items={fornecedoresItems}>
             <SelectTrigger id="fornecedorId" className={`w-full ${inputClass}`}>
               <SelectValue placeholder="Nenhum" />
             </SelectTrigger>
@@ -544,15 +578,15 @@ export function MovimentacaoForm({
 
       <div className="space-y-2">
         <Label htmlFor="observacao" className={labelClass}>Observação</Label>
-        <Input id="observacao" name="observacao" className={inputClass} />
+        <Input id="observacao" name="observacao" defaultValue={defaultValues?.observacao ?? ""} className={inputClass} />
       </div>
 
       {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}
       <div className="flex gap-3">
         <Button type="submit" disabled={pending} className="h-11 px-7 text-base">
-          {pending ? "Registrando..." : "Registrar Movimento"}
+          {pending ? "Salvando..." : "Salvar"}
         </Button>
-        <Button type="button" variant="outline" render={<Link href="/" />} className="h-11 px-7 text-base">
+        <Button type="button" variant="outline" render={<Link href="/lancamentos" />} className="h-11 px-7 text-base">
           Cancelar
         </Button>
       </div>
