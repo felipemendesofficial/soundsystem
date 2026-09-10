@@ -12,6 +12,7 @@ const schema = z.object({
   tipoCliente: z.enum(["varejista", "atacadista"]),
   telefone: z.string().trim().transform(normalizarTexto).optional(),
   email: z.union([z.literal(""), z.string().trim().email("Email inválido.")]).optional(),
+  tabelaPrecoPadraoId: z.string().trim().optional(),
 });
 
 export type ClienteFormState = { erro?: string };
@@ -28,6 +29,7 @@ function toData(formData: FormData) {
     tipoCliente: formData.get("tipoCliente"),
     telefone: formData.get("telefone"),
     email: formData.get("email"),
+    tabelaPrecoPadraoId: formData.get("tabelaPrecoPadraoId"),
   });
 }
 
@@ -42,6 +44,7 @@ export async function criarCliente(_prev: ClienteFormState, formData: FormData):
       tipoCliente: parsed.data.tipoCliente,
       telefone: parsed.data.telefone || null,
       email: parsed.data.email || null,
+      tabelaPrecoPadraoId: parsed.data.tabelaPrecoPadraoId || null,
     },
   });
 
@@ -65,6 +68,7 @@ export async function atualizarCliente(
       tipoCliente: parsed.data.tipoCliente,
       telefone: parsed.data.telefone || null,
       email: parsed.data.email || null,
+      tabelaPrecoPadraoId: parsed.data.tabelaPrecoPadraoId || null,
     },
   });
 

@@ -19,3 +19,12 @@ export function podeLancarMovimentacao(perfil: Perfil): boolean {
 export function podeGerenciarOrcamento(perfil: Perfil): boolean {
   return perfil === "admin" || perfil === "estoquista";
 }
+
+/**
+ * Gerenciar tabelas de preço envolve ver a margem (preço vs. custo médio) —
+ * mesma fronteira de `podeVerCusto`. O preço sugerido em si (sem margem)
+ * continua disponível para o vendedor dentro do formulário de venda.
+ */
+export function podeGerenciarTabelaPreco(perfil: Perfil): boolean {
+  return perfil === "admin" || perfil === "estoquista";
+}

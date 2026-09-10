@@ -21,6 +21,7 @@ import type { OrdemServicoFormState } from "@/app/(app)/ordens-servico/actions";
 
 type Item = { id: string; label: string };
 type ServicoItem = Item & { precoPadrao: number };
+type ClienteItem = Item & { tabelaPrecoPadraoId: string | null };
 
 type Linha = {
   key: string;
@@ -47,14 +48,20 @@ export function OSForm({
   depositos,
   produtos,
   servicos,
+  tabelasPreco,
+  precosPorTabela,
+  ultimosPrecosVenda,
   depositoPadraoId,
   defaultValues,
 }: {
   action: Action;
-  clientes: Item[];
+  clientes: ClienteItem[];
   depositos: Item[];
   produtos: Item[];
   servicos: ServicoItem[];
+  tabelasPreco: Item[];
+  precosPorTabela: Record<string, Record<string, number>>;
+  ultimosPrecosVenda: Record<string, number>;
   depositoPadraoId?: string | null;
   defaultValues?: {
     clienteId: string;
@@ -79,9 +86,26 @@ export function OSForm({
       precoUnitario: i.precoUnitario,
     }))
   );
+  // "" (nunca undefined) mesmo sem seleção — Select vira controlado assim que
+  // recebe `value`; alternar de undefined pra string depois dispara warning
+  // do React de componente trocando de não-controlado pra controlado.
+  const [clienteId, setClienteId] = useState(defaultValues?.clienteId ?? "");
+  const [tabelaPrecoId, setTabelaPrecoId] = useState(
+    () => clientes.find((c) => c.id === defaultValues?.clienteId)?.tabelaPrecoPadraoId ?? ""
+  );
 
   const clientesItems = Object.fromEntries(clientes.map((c) => [c.id, c.label]));
   const depositosItems = Object.fromEntries(depositos.map((d) => [d.id, d.label]));
+  const tabelasPrecoItems = Object.fromEntries(tabelasPreco.map((t) => [t.id, t.label]));
+
+  // Mesma lógica de sugestão de preço da Nova Movimentação: preço fixado na
+  // tabela de preço ativa, senão o último preço de venda já praticado.
+  function sugerirPreco(produtoId: string): string {
+    const doTabela = tabelaPrecoId ? precosPorTabela[tabelaPrecoId]?.[produtoId] : undefined;
+    if (doTabela !== undefined) return String(doTabela);
+    const ultimo = ultimosPrecosVenda[produtoId];
+    return ultimo !== undefined ? String(ultimo) : "";
+  }
 
   function adicionarLinha(tipo: "produto" | "servico") {
     // Novo item entra no topo da lista, ao lado dos botões "+ Produto/Serviço"
@@ -123,7 +147,16 @@ export function OSForm({
 
       <div className="space-y-2">
         <Label htmlFor="clienteId" className={labelClass}>Cliente</Label>
-        <Select name="clienteId" defaultValue={defaultValues?.clienteId} items={clientesItems}>
+        <Select
+          name="clienteId"
+          value={clienteId}
+          items={clientesItems}
+          onValueChange={(valor) => {
+            setClienteId(valor ?? "");
+            const cliente = clientes.find((c) => c.id === valor);
+            setTabelaPrecoId(cliente?.tabelaPrecoPadraoId ?? "");
+          }}
+        >
           <SelectTrigger id="clienteId" className={`w-full ${inputClass}`}>
             <SelectValue placeholder="Selecione o cliente" />
           </SelectTrigger>
@@ -136,6 +169,28 @@ export function OSForm({
           </SelectContent>
         </Select>
       </div>
+
+      {tabelasPreco.length > 0 && (
+        <div className="space-y-2">
+          <Label htmlFor="tabelaPrecoId" className={labelClass}>Tabela de Preço (sugestão)</Label>
+          <Select
+            value={tabelaPrecoId}
+            items={tabelasPrecoItems}
+            onValueChange={(valor) => setTabelaPrecoId(valor ?? "")}
+          >
+            <SelectTrigger id="tabelaPrecoId" className={`w-full ${inputClass}`}>
+              <SelectValue placeholder="Nenhuma" />
+            </SelectTrigger>
+            <SelectContent>
+              {tabelasPreco.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="depositoId" className={labelClass}>Depósito</Label>
@@ -202,10 +257,11 @@ export function OSForm({
                   onValueChange={(item: Item | null) => {
                     atualizarLinha(linha.key, {
                       item,
-                      precoUnitario:
-                        linha.tipo === "servico" && item
+                      precoUnitario: !item
+                        ? linha.precoUnitario
+                        : linha.tipo === "servico"
                           ? String((item as ServicoItem).precoPadrao)
-                          : linha.precoUnitario,
+                          : sugerirPreco(item.id),
                     });
                   }}
                   itemToStringLabel={(item: Item) => item.label}

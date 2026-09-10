@@ -49,6 +49,7 @@ const TODOS_OS_TIPOS = [
 const estadoInicial: MovimentacaoFormState = {};
 
 type Item = { id: string; label: string };
+type ClienteItem = Item & { tabelaPrecoPadraoId: string | null };
 
 type Linha = {
   key: string;
@@ -76,13 +77,19 @@ export function MovimentacaoForm({
   depositos,
   fornecedores,
   clientes,
+  tabelasPreco,
+  precosPorTabela,
+  ultimosPrecosVenda,
   perfil,
   depositoPadraoId,
 }: {
   produtos: Item[];
   depositos: Item[];
   fornecedores: Item[];
-  clientes: Item[];
+  clientes: ClienteItem[];
+  tabelasPreco: Item[];
+  precosPorTabela: Record<string, Record<string, number>>;
+  ultimosPrecosVenda: Record<string, number>;
   perfil: string;
   depositoPadraoId: string | null;
 }) {
@@ -90,16 +97,32 @@ export function MovimentacaoForm({
   const [tipoMovimento, setTipoMovimento] = useState(tiposDisponiveis[0]);
   const [state, formAction, pending] = useActionState(registrarMovimento, estadoInicial);
   const [linhas, setLinhas] = useState<Linha[]>(() => [linhaVazia()]);
+  // "" (nunca undefined) mesmo sem seleção — Select vira controlado assim que
+  // recebe `value`; alternar de undefined pra string depois dispara warning
+  // do React de componente trocando de não-controlado pra controlado.
+  const [clienteId, setClienteId] = useState("");
+  const [tabelaPrecoId, setTabelaPrecoId] = useState("");
 
   const tiposItems = Object.fromEntries(tiposDisponiveis.map((tipo) => [tipo, TIPOS_LABEL[tipo]]));
   const depositosItems = Object.fromEntries(depositos.map((d) => [d.id, d.label]));
   const fornecedoresItems = Object.fromEntries(fornecedores.map((f) => [f.id, f.label]));
   const clientesItems = Object.fromEntries(clientes.map((c) => [c.id, c.label]));
+  const tabelasPrecoItems = Object.fromEntries(tabelasPreco.map((t) => [t.id, t.label]));
 
   const ehEntrada = ENTRADA_TIPOS.has(tipoMovimento);
   const ehSaida = SAIDA_TIPOS.has(tipoMovimento);
   const ehVenda = tipoMovimento === "venda";
   const ehTransferencia = tipoMovimento === "transferencia";
+
+  // Sugestão de preço ao escolher um produto numa venda: preço fixado na
+  // tabela de preço ativa, senão o último preço de venda já praticado para
+  // esse produto — sempre editável, nunca imposto.
+  function sugerirPreco(produtoId: string): string {
+    const doTabela = tabelaPrecoId ? precosPorTabela[tabelaPrecoId]?.[produtoId] : undefined;
+    if (doTabela !== undefined) return String(doTabela);
+    const ultimo = ultimosPrecosVenda[produtoId];
+    return ultimo !== undefined ? String(ultimo) : "";
+  }
 
   function adicionarLinha() {
     // Novo item entra no topo da lista, ao lado do botão "+ Produto" — assim
@@ -223,21 +246,54 @@ export function MovimentacaoForm({
       )}
 
       {ehSaida && ehVenda && (
-        <div className="space-y-2">
-          <Label htmlFor="clienteId" className={labelClass}>Cliente</Label>
-          <Select name="clienteId" items={clientesItems}>
-            <SelectTrigger id="clienteId" className={`w-full ${inputClass}`}>
-              <SelectValue placeholder="Nenhum" />
-            </SelectTrigger>
-            <SelectContent>
-              {clientes.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="clienteId" className={labelClass}>Cliente</Label>
+            <Select
+              name="clienteId"
+              value={clienteId}
+              items={clientesItems}
+              onValueChange={(valor) => {
+                setClienteId(valor ?? "");
+                const cliente = clientes.find((c) => c.id === valor);
+                setTabelaPrecoId(cliente?.tabelaPrecoPadraoId ?? "");
+              }}
+            >
+              <SelectTrigger id="clienteId" className={`w-full ${inputClass}`}>
+                <SelectValue placeholder="Nenhum" />
+              </SelectTrigger>
+              <SelectContent>
+                {clientes.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {tabelasPreco.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="tabelaPrecoId" className={labelClass}>Tabela de Preço (sugestão)</Label>
+              <Select
+                value={tabelaPrecoId}
+                items={tabelasPrecoItems}
+                onValueChange={(valor) => setTabelaPrecoId(valor ?? "")}
+              >
+                <SelectTrigger id="tabelaPrecoId" className={`w-full ${inputClass}`}>
+                  <SelectValue placeholder="Nenhuma" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tabelasPreco.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </>
       )}
 
       <div className="space-y-3">
@@ -269,7 +325,12 @@ export function MovimentacaoForm({
               <Combobox
                 items={produtos}
                 value={linha.produto}
-                onValueChange={(item: Item | null) => atualizarLinha(linha.key, { produto: item })}
+                onValueChange={(item: Item | null) =>
+                  atualizarLinha(linha.key, {
+                    produto: item,
+                    ...(ehVenda && item ? { precoVenda: sugerirPreco(item.id) } : {}),
+                  })
+                }
                 itemToStringLabel={(item: Item) => item.label}
                 itemToStringValue={(item: Item) => item.id}
               >
