@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { ChevronRight, Plus, ClipboardList, ListChecks, Wrench } from "lucide-react";
+import { ChevronRight, Plus, ClipboardList, Calculator, Wrench } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { podeVerCusto } from "@/lib/permissions";
+import { podeGerenciarOrcamento, podeVerCusto } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
 function formatarMoeda(valor: number) {
@@ -153,12 +153,16 @@ export default async function HomePage() {
       descricao: "Serviços e produtos usados",
       icon: Wrench,
     },
-    {
-      href: "/ordens-servico",
-      titulo: "Ordens de Serviço",
-      descricao: "Acompanhar OS abertas",
-      icon: ListChecks,
-    },
+    ...(podeGerenciarOrcamento(perfil)
+      ? [
+          {
+            href: "/orcamentos",
+            titulo: "Orçamento de Compra",
+            descricao: "Rateio de compra por fornecedor",
+            icon: Calculator,
+          },
+        ]
+      : []),
   ];
 
   return (
