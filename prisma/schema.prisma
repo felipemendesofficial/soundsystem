@@ -109,15 +109,17 @@ model Fornecedor {
 }
 
 model Cliente {
-  id          String      @id @default(uuid())
-  nome        String
-  tipoCliente TipoCliente @map("tipo_cliente")
-  telefone    String?
-  email       String?
-  criadoEm    DateTime    @default(now()) @map("criado_em")
+  id                  String      @id @default(uuid())
+  nome                String
+  tipoCliente         TipoCliente @map("tipo_cliente")
+  telefone            String?
+  email               String?
+  tabelaPrecoPadraoId String?     @map("tabela_preco_padrao_id")
+  criadoEm            DateTime    @default(now()) @map("criado_em")
 
-  movimentacoes Movimentacao[]
-  ordensServico OrdemServico[]
+  tabelaPrecoPadrao TabelaPreco?   @relation(fields: [tabelaPrecoPadraoId], references: [id])
+  movimentacoes     Movimentacao[]
+  ordensServico     OrdemServico[]
 
   @@map("clientes")
 }
@@ -144,6 +146,35 @@ model UnidadeMedida {
   @@map("unidades_medida")
 }
 
+/// Uma tabela de preços nomeada (ex.: "Varejo", "Atacado", "Promoção X") com um
+/// preço de venda por produto. Ao escolher um cliente numa venda ou OS, a
+/// tabela associada a ele (Cliente.tabelaPrecoPadraoId) é sugerida — sempre
+/// editável. Sem versionamento: é um valor mutável, como Servico.precoPadrao.
+model TabelaPreco {
+  id       String   @id @default(uuid())
+  nome     String   @unique
+  ativo    Boolean  @default(true)
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  itens    ItemTabelaPreco[]
+  clientes Cliente[]
+
+  @@map("tabelas_preco")
+}
+
+model ItemTabelaPreco {
+  id            String  @id @default(uuid())
+  tabelaPrecoId String  @map("tabela_preco_id")
+  produtoId     String  @map("produto_id")
+  preco         Decimal @db.Decimal(14, 2)
+
+  tabelaPreco TabelaPreco @relation(fields: [tabelaPrecoId], references: [id], onDelete: Cascade)
+  produto     Produto     @relation(fields: [produtoId], references: [id])
+
+  @@unique([tabelaPrecoId, produtoId])
+  @@map("tabela_preco_itens")
+}
+
 model Produto {
   id                String            @id @default(uuid())
   sku               String            @unique
@@ -158,12 +189,13 @@ model Produto {
   ativo             Boolean           @default(true)
   criadoEm          DateTime          @default(now()) @map("criado_em")
 
-  categoria      Categoria                 @relation(fields: [categoriaId], references: [id])
-  unidadeMedida  UnidadeMedida             @relation(fields: [unidadeMedidaId], references: [id])
-  estoques       ProdutoEstoque[]
-  movimentacoes  Movimentacao[]
-  itensOS        ItemOrdemServicoProduto[]
-  itensOrcamento ItemOrcamento[]
+  categoria        Categoria                 @relation(fields: [categoriaId], references: [id])
+  unidadeMedida    UnidadeMedida             @relation(fields: [unidadeMedidaId], references: [id])
+  estoques         ProdutoEstoque[]
+  movimentacoes    Movimentacao[]
+  itensOS          ItemOrdemServicoProduto[]
+  itensOrcamento   ItemOrcamento[]
+  itensTabelaPreco ItemTabelaPreco[]
 
   @@map("produtos")
 }

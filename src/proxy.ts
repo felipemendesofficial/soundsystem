@@ -23,9 +23,10 @@ export default auth((req) => {
     return NextResponse.redirect(new URL("/", nextUrl));
   }
 
+  const ROTAS_ADMIN_ESTOQUISTA = ["/orcamentos", "/tabela-precos"];
   if (
     isLoggedIn &&
-    nextUrl.pathname.startsWith("/orcamentos") &&
+    ROTAS_ADMIN_ESTOQUISTA.some((rota) => nextUrl.pathname.startsWith(rota)) &&
     req.auth?.user?.perfil !== "admin" &&
     req.auth?.user?.perfil !== "estoquista"
   ) {

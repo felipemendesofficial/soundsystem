@@ -17,6 +17,7 @@ import {
   Wrench,
   ListChecks,
   Calculator,
+  Tag,
   LogOut,
 } from "lucide-react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
@@ -67,11 +68,20 @@ function NavLink({
   );
 }
 
-export function BottomNav({ isAdmin, podeVerOrcamentos }: { isAdmin: boolean; podeVerOrcamentos: boolean }) {
+export function BottomNav({
+  isAdmin,
+  podeVerOrcamentos,
+  podeVerTabelaPrecos,
+}: {
+  isAdmin: boolean;
+  podeVerOrcamentos: boolean;
+  podeVerTabelaPrecos: boolean;
+}) {
   const pathname = usePathname();
   const mais = [
     ...MAIS_ROUTES,
     ...(podeVerOrcamentos ? ["/orcamentos"] : []),
+    ...(podeVerTabelaPrecos ? ["/tabela-precos"] : []),
     ...(isAdmin ? ["/usuarios"] : []),
   ];
   const maisAtivo = mais.some((rota) => pathname.startsWith(rota));
@@ -167,6 +177,15 @@ export function BottomNav({ isAdmin, podeVerOrcamentos }: { isAdmin: boolean; po
                 >
                   <Calculator className="size-[18px] flex-none text-primary" />
                   <span className="text-[13.5px] font-medium">Orçamentos</span>
+                </DialogClose>
+              )}
+              {podeVerTabelaPrecos && (
+                <DialogClose
+                  render={<Link href="/tabela-precos" />}
+                  className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
+                >
+                  <Tag className="size-[18px] flex-none text-primary" />
+                  <span className="text-[13.5px] font-medium">Tabelas de Preço</span>
                 </DialogClose>
               )}
               {isAdmin && (
