@@ -3,7 +3,9 @@ import { db } from "@/lib/db";
 import type { StatusOS } from "@/generated/prisma/client";
 import { Button } from "@/components/ui/button";
 import { StatusOSFilter } from "@/components/status-os-filter";
+import { PeriodoFilter } from "@/components/periodo-filter";
 import { OrdensServicoLista, type ItemOrdemServico } from "@/components/ordens-servico-lista";
+import { primeiroDiaDoMesISO, ultimoDiaDoMesISO, intervaloPeriodo } from "@/lib/periodo";
 
 const STATUS_LABEL: Record<string, string> = {
   aberta: "Aberta",
@@ -22,16 +24,25 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> = 
 export default async function OrdensServicoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; periodo?: string; dataInicio?: string; dataFim?: string }>;
 }) {
-  const { status } = await searchParams;
+  const { status, periodo, dataInicio, dataFim } = await searchParams;
+
+  const hoje = new Date();
+  const padraoInicio = primeiroDiaDoMesISO(hoje);
+  const padraoFim = ultimoDiaDoMesISO(hoje);
+  const filtroPeriodo =
+    periodo === "todos" ? null : intervaloPeriodo(dataInicio ?? padraoInicio, dataFim ?? padraoFim);
 
   const ordens = await db.ordemServico.findMany({
-    where: status ? { status: status as StatusOS } : undefined,
+    where: {
+      ...(status ? { status: status as StatusOS } : {}),
+      ...(filtroPeriodo ? { criadaEm: filtroPeriodo } : {}),
+    },
     include: {
       cliente: true,
-      itensProduto: true,
-      itensServico: true,
+      itensProduto: { include: { produto: true } },
+      itensServico: { include: { servico: true } },
     },
     orderBy: { numero: "desc" },
   });
@@ -48,7 +59,14 @@ export default async function OrdensServicoPage({
       statusLabel: STATUS_LABEL[os.status],
       statusVariant: STATUS_VARIANT[os.status],
       total: total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
-      buscaTexto: [`os #${os.numero}`, os.cliente.nome].join(" ").toLowerCase(),
+      buscaTexto: [
+        `os #${os.numero}`,
+        os.cliente.nome,
+        ...os.itensProduto.map((i) => i.produto.nome),
+        ...os.itensServico.map((i) => i.servico.nome),
+      ]
+        .join(" ")
+        .toLowerCase(),
     };
   });
 
@@ -60,6 +78,7 @@ export default async function OrdensServicoPage({
       </div>
 
       <StatusOSFilter />
+      <PeriodoFilter padraoInicio={padraoInicio} padraoFim={padraoFim} />
 
       <OrdensServicoLista itens={itensLista} />
     </div>

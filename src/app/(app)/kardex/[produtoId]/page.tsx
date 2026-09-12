@@ -7,6 +7,7 @@ import { DepositoFilter } from "@/components/deposito-filter";
 import { PeriodoFilter } from "@/components/periodo-filter";
 import { EstornarMovimentoButton } from "@/components/estornar-movimento-button";
 import { estornarMovimento } from "@/app/(app)/movimentacoes/actions";
+import { primeiroDiaDoMesISO, ultimoDiaDoMesISO, intervaloPeriodo } from "@/lib/periodo";
 import type { Perfil, TipoMovimento } from "@/generated/prisma/client";
 
 const TIPOS_ESTORNAVEIS = new Set<TipoMovimento>([
@@ -68,18 +69,6 @@ function formatarMoeda(valor: unknown) {
   return Number(valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function paraISO(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-// Intervalo do período em horário local (mesmo critério do resto do app — ex.:
-// `intervaloDoDia` em Lançamentos), incluindo o dia final inteiro.
-function intervaloPeriodo(inicioISO: string, fimISO: string) {
-  const [anoI, mesI, diaI] = inicioISO.split("-").map(Number);
-  const [anoF, mesF, diaF] = fimISO.split("-").map(Number);
-  return { gte: new Date(anoI, mesI - 1, diaI), lt: new Date(anoF, mesF - 1, diaF + 1) };
-}
-
 export default async function KardexPage({
   params,
   searchParams,
@@ -91,8 +80,8 @@ export default async function KardexPage({
   const { depositoId, periodo, dataInicio, dataFim } = await searchParams;
 
   const hoje = new Date();
-  const padraoInicio = paraISO(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
-  const padraoFim = paraISO(new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0));
+  const padraoInicio = primeiroDiaDoMesISO(hoje);
+  const padraoFim = ultimoDiaDoMesISO(hoje);
   const filtroPeriodo =
     periodo === "todos" ? null : intervaloPeriodo(dataInicio ?? padraoInicio, dataFim ?? padraoFim);
 

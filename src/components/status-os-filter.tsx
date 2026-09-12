@@ -30,7 +30,7 @@ export function StatusOSFilter() {
         router.push(`${pathname}?${params.toString()}`);
       }}
     >
-      <SelectTrigger className="w-56">
+      <SelectTrigger className="w-full">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

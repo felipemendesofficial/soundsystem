@@ -22,11 +22,11 @@ export function OrdensServicoLista({ itens }: { itens: ItemOrdemServico[] }) {
   const filtrados = termo ? itens.filter((i) => i.buscaTexto.includes(termo)) : itens;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <Input
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
-        placeholder="Buscar por número ou cliente"
+        placeholder="Buscar por número, cliente ou item"
         aria-label="Buscar Ordem de Serviço"
       />
 
@@ -35,26 +35,26 @@ export function OrdensServicoLista({ itens }: { itens: ItemOrdemServico[] }) {
           {termo ? `Nenhuma OS encontrada para "${busca.trim()}".` : "Nenhuma Ordem de Serviço cadastrada."}
         </p>
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-2">
           {filtrados.map((item) => (
             <li key={item.id}>
               <Link
                 href={`/ordens-servico/${item.id}`}
-                className="relative block rounded-lg border border-border bg-card p-5 active:bg-accent"
+                className="relative block rounded-lg border border-border bg-card p-3 active:bg-accent"
               >
-                <Badge variant={item.statusVariant} className="absolute top-5 right-5">
+                <Badge variant={item.statusVariant} className="absolute top-3 right-3">
                   {item.statusLabel}
                 </Badge>
-                <h2 className="mb-4 text-lg font-semibold">OS #{item.numero}</h2>
+                <h2 className="mb-2 text-[15px] font-semibold">OS #{item.numero}</h2>
 
-                <div className="mb-4 grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <div className="min-w-0">
-                    <div className="mb-1 truncate text-[13px] text-muted-foreground">Cliente</div>
-                    <div className="truncate text-[15.5px] font-medium">{item.clienteNome}</div>
+                    <div className="truncate text-[11px] leading-tight text-muted-foreground">Cliente</div>
+                    <div className="truncate text-[14px] leading-tight font-medium">{item.clienteNome}</div>
                   </div>
                   <div className="min-w-0">
-                    <div className="mb-1 truncate text-[13px] text-muted-foreground">Total</div>
-                    <div className="truncate text-[15.5px] font-medium">{item.total}</div>
+                    <div className="truncate text-[11px] leading-tight text-muted-foreground">Total</div>
+                    <div className="truncate text-[14px] leading-tight font-medium">{item.total}</div>
                   </div>
                 </div>
               </Link>
