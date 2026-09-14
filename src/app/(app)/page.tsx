@@ -9,23 +9,12 @@ function formatarMoeda(valor: number) {
   return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function formatarNumero(valor: number) {
-  return valor.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
-}
-
-function maiorPor<T>(itens: T[], valor: (item: T) => number): T | null {
-  return itens.reduce<T | null>(
-    (melhor, item) => (melhor === null || valor(item) > valor(melhor) ? item : melhor),
-    null
-  );
-}
-
 async function obterVisaoGeralVendas(empresaId: string) {
   const agora = new Date();
   const inicioMesAtual = new Date(agora.getFullYear(), agora.getMonth(), 1);
   const inicioMesAnterior = new Date(agora.getFullYear(), agora.getMonth() - 1, 1);
 
-  const [movimentosAtuais, movimentosAnteriores] = await Promise.all([
+  const [movimentosAtuais, movimentosAnteriores, osAtuais, osAnteriores] = await Promise.all([
     db.movimentacao.findMany({
       where: {
         empresaId,
@@ -33,14 +22,13 @@ async function obterVisaoGeralVendas(empresaId: string) {
         dataMovimento: { gte: inicioMesAtual },
       },
       select: {
-        produtoId: true,
         quantidade: true,
         precoVenda: true,
         custoMedioApos: true,
         dataMovimento: true,
         ordemServicoId: true,
+        lancamentoId: true,
         usuarioId: true,
-        produto: { select: { nome: true } },
       },
     }),
     db.movimentacao.findMany({
@@ -51,64 +39,92 @@ async function obterVisaoGeralVendas(empresaId: string) {
       },
       select: { quantidade: true, precoVenda: true },
     }),
+    db.ordemServico.findMany({
+      where: { empresaId, status: "concluida", concluidaEm: { gte: inicioMesAtual } },
+      select: { id: true, itensServico: { select: { quantidade: true, precoUnitario: true } } },
+    }),
+    db.ordemServico.findMany({
+      where: { empresaId, status: "concluida", concluidaEm: { gte: inicioMesAnterior, lt: inicioMesAtual } },
+      select: { itensServico: { select: { quantidade: true, precoUnitario: true } } },
+    }),
   ]);
 
-  let faturamentoAtual = 0;
-  let custoTotalAtual = 0;
-  const pedidos = new Set<string>();
-  const porProduto = new Map<string, { nome: string; quantidade: number; faturamento: number; custo: number }>();
+  let valorProdutosAtual = 0;
+  let custoProdutosAtual = 0;
+  const pedidosProduto = new Set<string>();
 
   for (const mov of movimentosAtuais) {
     const quantidade = Number(mov.quantidade);
     const precoVenda = mov.precoVenda ? Number(mov.precoVenda) : 0;
     const custoUnitario = Number(mov.custoMedioApos);
-    const faturamentoLinha = quantidade * precoVenda;
-    const custoLinha = quantidade * custoUnitario;
-
-    faturamentoAtual += faturamentoLinha;
-    custoTotalAtual += custoLinha;
-    pedidos.add(mov.ordemServicoId ?? `${mov.dataMovimento.toISOString()}|${mov.usuarioId}`);
-
-    const acumulado = porProduto.get(mov.produtoId) ?? {
-      nome: mov.produto.nome,
-      quantidade: 0,
-      faturamento: 0,
-      custo: 0,
-    };
-    acumulado.quantidade += quantidade;
-    acumulado.faturamento += faturamentoLinha;
-    acumulado.custo += custoLinha;
-    porProduto.set(mov.produtoId, acumulado);
+    valorProdutosAtual += quantidade * precoVenda;
+    custoProdutosAtual += quantidade * custoUnitario;
+    pedidosProduto.add(
+      mov.lancamentoId ?? mov.ordemServicoId ?? `${mov.dataMovimento.toISOString()}|${mov.usuarioId}`
+    );
   }
 
-  let faturamentoAnterior = 0;
+  let valorProdutosAnterior = 0;
   for (const mov of movimentosAnteriores) {
-    faturamentoAnterior += Number(mov.quantidade) * (mov.precoVenda ? Number(mov.precoVenda) : 0);
+    valorProdutosAnterior += Number(mov.quantidade) * (mov.precoVenda ? Number(mov.precoVenda) : 0);
   }
 
-  const margemBrutaAtual = faturamentoAtual - custoTotalAtual;
-  const margemPercentualAtual = faturamentoAtual > 0 ? (margemBrutaAtual / faturamentoAtual) * 100 : 0;
-  const ticketMedio = pedidos.size > 0 ? faturamentoAtual / pedidos.size : 0;
-  const variacaoPercentual =
-    faturamentoAnterior > 0 ? ((faturamentoAtual - faturamentoAnterior) / faturamentoAnterior) * 100 : null;
+  let valorServicosAtual = 0;
+  const pedidosServico = new Set<string>();
+  for (const os of osAtuais) {
+    if (os.itensServico.length === 0) continue;
+    pedidosServico.add(os.id);
+    for (const item of os.itensServico) {
+      valorServicosAtual += Number(item.quantidade) * Number(item.precoUnitario);
+    }
+  }
 
-  const produtosArray = [...porProduto.values()];
-  const maisVendido = maiorPor(produtosArray, (p) => p.quantidade);
-  const maiorFaturamento = maiorPor(produtosArray, (p) => p.faturamento);
-  const maisRentavel = maiorPor(
-    produtosArray.filter((p) => p.faturamento > 0),
-    (p) => (p.faturamento - p.custo) / p.faturamento
-  );
+  let valorServicosAnterior = 0;
+  for (const os of osAnteriores) {
+    for (const item of os.itensServico) {
+      valorServicosAnterior += Number(item.quantidade) * Number(item.precoUnitario);
+    }
+  }
+
+  const faturamentoTotalAtual = valorProdutosAtual + valorServicosAtual;
+  const faturamentoTotalAnterior = valorProdutosAnterior + valorServicosAnterior;
+  const variacaoPercentual =
+    faturamentoTotalAnterior > 0
+      ? ((faturamentoTotalAtual - faturamentoTotalAnterior) / faturamentoTotalAnterior) * 100
+      : null;
+
+  const margemBrutaProdutos = valorProdutosAtual - custoProdutosAtual;
+
+  // Serviços não têm custo rastreado no Kardex, então o valor de serviço inteiro
+  // entra como margem na margem bruta total (produtos + serviços - custo dos produtos).
+  const margemBrutaTotal = faturamentoTotalAtual - custoProdutosAtual;
+  const margemPercentualTotal = faturamentoTotalAtual > 0 ? (margemBrutaTotal / faturamentoTotalAtual) * 100 : 0;
+
+  // Composição da margem bruta total entre serviços (100% margem, sem custo
+  // rastreado) e produtos — as duas fatias somam ~100% da margem bruta total.
+  const percentualServicosNaMargem = margemBrutaTotal > 0 ? (valorServicosAtual / margemBrutaTotal) * 100 : 0;
+  const percentualProdutosNaMargem = margemBrutaTotal > 0 ? (margemBrutaProdutos / margemBrutaTotal) * 100 : 0;
+
+  const ticketMedioProduto = pedidosProduto.size > 0 ? valorProdutosAtual / pedidosProduto.size : 0;
+  const ticketMedioServico = pedidosServico.size > 0 ? valorServicosAtual / pedidosServico.size : 0;
+
+  const pedidosTotal = new Set(pedidosProduto);
+  for (const id of pedidosServico) pedidosTotal.add(id);
+  const ticketMedioTotal = pedidosTotal.size > 0 ? faturamentoTotalAtual / pedidosTotal.size : 0;
 
   return {
-    faturamentoAtual,
-    margemBrutaAtual,
-    margemPercentualAtual,
-    ticketMedio,
+    faturamentoTotalAtual,
     variacaoPercentual,
-    maisVendido,
-    maiorFaturamento,
-    maisRentavel,
+    valorProdutosAtual,
+    valorServicosAtual,
+    margemBrutaProdutos,
+    margemBrutaTotal,
+    margemPercentualTotal,
+    percentualServicosNaMargem,
+    percentualProdutosNaMargem,
+    ticketMedioProduto,
+    ticketMedioServico,
+    ticketMedioTotal,
   };
 }
 
@@ -232,13 +248,13 @@ export default async function HomePage() {
             Visão Geral de Vendas
           </div>
           <div className="rounded-[14px] border border-border bg-card p-4">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-4">
               <div className="min-w-0">
                 <div className="font-mono text-[9px] uppercase tracking-[0.06em] text-text-faint">
-                  Faturamento
+                  Faturamento total
                 </div>
-                <div className="mt-1 truncate font-heading text-[17px] font-extrabold leading-tight">
-                  {formatarMoeda(visaoGeralVendas.faturamentoAtual)}
+                <div className="mt-1 truncate text-[17px] font-normal leading-tight">
+                  {formatarMoeda(visaoGeralVendas.faturamentoTotalAtual)}
                 </div>
                 {visaoGeralVendas.variacaoPercentual !== null && (
                   <div
@@ -254,53 +270,68 @@ export default async function HomePage() {
               </div>
               <div className="min-w-0">
                 <div className="font-mono text-[9px] uppercase tracking-[0.06em] text-text-faint">
-                  Margem bruta
+                  Valor dos serviços
                 </div>
-                <div className="mt-1 truncate font-heading text-[17px] font-extrabold leading-tight">
-                  {formatarMoeda(visaoGeralVendas.margemBrutaAtual)}
+                <div className="mt-1 truncate text-[17px] font-normal leading-tight">
+                  {formatarMoeda(visaoGeralVendas.valorServicosAtual)}
                 </div>
                 <div className="mt-0.5 text-[11px] text-muted-foreground">
-                  {visaoGeralVendas.margemPercentualAtual.toFixed(0)}%
+                  {visaoGeralVendas.percentualServicosNaMargem.toFixed(0)}% da margem bruta
                 </div>
               </div>
               <div className="min-w-0">
                 <div className="font-mono text-[9px] uppercase tracking-[0.06em] text-text-faint">
-                  Ticket médio
+                  Valor dos produtos
                 </div>
-                <div className="mt-1 truncate font-heading text-[17px] font-extrabold leading-tight">
-                  {formatarMoeda(visaoGeralVendas.ticketMedio)}
+                <div className="mt-1 truncate text-[17px] font-normal leading-tight">
+                  {formatarMoeda(visaoGeralVendas.valorProdutosAtual)}
                 </div>
               </div>
-            </div>
-
-            <div className="mt-4 space-y-2.5 border-t border-border pt-3.5">
-              <div className="flex items-center justify-between gap-3 text-[13px]">
-                <span className="flex-none text-muted-foreground">Mais vendido</span>
-                <span className="truncate text-right font-semibold">
-                  {visaoGeralVendas.maisVendido
-                    ? `${visaoGeralVendas.maisVendido.nome} · ${formatarNumero(visaoGeralVendas.maisVendido.quantidade)}`
-                    : "—"}
-                </span>
+              <div className="min-w-0">
+                <div className="font-mono text-[9px] uppercase tracking-[0.06em] text-text-faint">
+                  Margem bruta produtos
+                </div>
+                <div className="mt-1 truncate text-[17px] font-normal leading-tight">
+                  {formatarMoeda(visaoGeralVendas.margemBrutaProdutos)}
+                </div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  {visaoGeralVendas.percentualProdutosNaMargem.toFixed(0)}% da margem total
+                </div>
               </div>
-              <div className="flex items-center justify-between gap-3 text-[13px]">
-                <span className="flex-none text-muted-foreground">Maior faturamento</span>
-                <span className="truncate text-right font-semibold">
-                  {visaoGeralVendas.maiorFaturamento
-                    ? `${visaoGeralVendas.maiorFaturamento.nome} · ${formatarMoeda(visaoGeralVendas.maiorFaturamento.faturamento)}`
-                    : "—"}
-                </span>
+              <div className="min-w-0">
+                <div className="font-mono text-[9px] uppercase tracking-[0.06em] text-text-faint">
+                  Margem bruta total
+                </div>
+                <div className="mt-1 truncate text-[17px] font-normal leading-tight">
+                  {formatarMoeda(visaoGeralVendas.margemBrutaTotal)}
+                </div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  {visaoGeralVendas.margemPercentualTotal.toFixed(0)}%
+                </div>
               </div>
-              <div className="flex items-center justify-between gap-3 text-[13px]">
-                <span className="flex-none text-muted-foreground">Mais rentável</span>
-                <span className="truncate text-right font-semibold">
-                  {visaoGeralVendas.maisRentavel
-                    ? `${visaoGeralVendas.maisRentavel.nome} · ${(
-                        ((visaoGeralVendas.maisRentavel.faturamento - visaoGeralVendas.maisRentavel.custo) /
-                          visaoGeralVendas.maisRentavel.faturamento) *
-                        100
-                      ).toFixed(0)}%`
-                    : "—"}
-                </span>
+              <div className="min-w-0">
+                <div className="font-mono text-[9px] uppercase tracking-[0.06em] text-text-faint">
+                  Ticket médio serviço
+                </div>
+                <div className="mt-1 truncate text-[17px] font-normal leading-tight">
+                  {formatarMoeda(visaoGeralVendas.ticketMedioServico)}
+                </div>
+              </div>
+              <div className="min-w-0">
+                <div className="font-mono text-[9px] uppercase tracking-[0.06em] text-text-faint">
+                  Ticket médio produto
+                </div>
+                <div className="mt-1 truncate text-[17px] font-normal leading-tight">
+                  {formatarMoeda(visaoGeralVendas.ticketMedioProduto)}
+                </div>
+              </div>
+              <div className="min-w-0">
+                <div className="font-mono text-[9px] uppercase tracking-[0.06em] text-text-faint">
+                  Ticket médio total
+                </div>
+                <div className="mt-1 truncate text-[17px] font-normal leading-tight">
+                  {formatarMoeda(visaoGeralVendas.ticketMedioTotal)}
+                </div>
               </div>
             </div>
           </div>
