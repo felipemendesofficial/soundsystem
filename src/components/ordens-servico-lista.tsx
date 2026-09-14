@@ -11,7 +11,11 @@ export type ItemOrdemServico = {
   clienteNome: string;
   statusLabel: string;
   statusVariant: "default" | "secondary" | "destructive";
+  valorServicos: string;
+  valorProdutos: string;
   total: string;
+  margemProdutos?: string;
+  margemTotal?: string;
   buscaTexto: string;
 };
 
@@ -45,17 +49,34 @@ export function OrdensServicoLista({ itens }: { itens: ItemOrdemServico[] }) {
                 <Badge variant={item.statusVariant} className="absolute top-3 right-3">
                   {item.statusLabel}
                 </Badge>
-                <h2 className="mb-2 text-[15px] font-semibold">OS #{item.numero}</h2>
+                <h2 className="text-[15px] font-semibold">OS #{item.numero}</h2>
+                <p className="mb-2 truncate text-[12px] text-muted-foreground">{item.clienteNome}</p>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-x-2 gap-y-1.5">
                   <div className="min-w-0">
-                    <div className="truncate text-[11px] leading-tight text-muted-foreground">Cliente</div>
-                    <div className="truncate text-[14px] leading-tight font-medium">{item.clienteNome}</div>
+                    <div className="truncate text-[11px] leading-tight text-muted-foreground">Serviço</div>
+                    <div className="truncate text-[14px] leading-tight font-medium">{item.valorServicos}</div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-[11px] leading-tight text-muted-foreground">Produtos</div>
+                    <div className="truncate text-[14px] leading-tight font-medium">{item.valorProdutos}</div>
                   </div>
                   <div className="min-w-0">
                     <div className="truncate text-[11px] leading-tight text-muted-foreground">Total</div>
                     <div className="truncate text-[14px] leading-tight font-medium">{item.total}</div>
                   </div>
+                  {item.margemProdutos !== undefined && (
+                    <div className="min-w-0">
+                      <div className="truncate text-[11px] leading-tight text-muted-foreground">Margem Prod.</div>
+                      <div className="truncate text-[14px] leading-tight font-medium">{item.margemProdutos}</div>
+                    </div>
+                  )}
+                  {item.margemTotal !== undefined && (
+                    <div className="min-w-0">
+                      <div className="truncate text-[11px] leading-tight text-muted-foreground">Margem Total</div>
+                      <div className="truncate text-[14px] leading-tight font-medium">{item.margemTotal}</div>
+                    </div>
+                  )}
                 </div>
               </Link>
             </li>

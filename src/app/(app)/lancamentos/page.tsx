@@ -4,8 +4,10 @@ import { db } from "@/lib/db";
 import type { StatusLancamento } from "@/generated/prisma/client";
 import { Button } from "@/components/ui/button";
 import { StatusLancamentoFilter } from "@/components/status-lancamento-filter";
-import { DataLancamentoFilter } from "@/components/data-lancamento-filter";
+import { PeriodoFilter } from "@/components/periodo-filter";
 import { LancamentosLista, type ItemLancamento } from "@/components/lancamentos-lista";
+import { podeVerCusto } from "@/lib/permissions";
+import { primeiroDiaDoMesISO, ultimoDiaDoMesISO, intervaloPeriodo } from "@/lib/periodo";
 
 const STATUS_LABEL: Record<string, string> = {
   aberto: "Aberto",
@@ -29,32 +31,32 @@ const TIPO_LABEL: Record<string, string> = {
   transferencia: "Transferência",
 };
 
-function paraISO(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
+const ENTRADA_TIPOS = new Set(["compra", "devolucao_cliente", "ajuste_entrada"]);
 
-// Intervalo do dia em horário local (mesmo critério do resto do app — ex.:
-// `obterVisaoGeralVendas` na home — que usa Date local sem fuso explícito).
-function intervaloDoDia(dataISO: string) {
-  const [ano, mes, dia] = dataISO.split("-").map(Number);
-  return { gte: new Date(ano, mes - 1, dia), lt: new Date(ano, mes - 1, dia + 1) };
+function formatarMoeda(valor: number) {
+  return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 export default async function LancamentosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; data?: string }>;
+  searchParams: Promise<{ status?: string; periodo?: string; dataInicio?: string; dataFim?: string }>;
 }) {
-  const { status, data } = await searchParams;
+  const { status, periodo, dataInicio, dataFim } = await searchParams;
   const session = await auth();
-  const hojeISO = paraISO(new Date());
-  const dataFiltro = data === "todos" ? null : (data ?? hojeISO);
+  const mostrarCusto = podeVerCusto(session!.user.perfil);
+
+  const hoje = new Date();
+  const padraoInicio = primeiroDiaDoMesISO(hoje);
+  const padraoFim = ultimoDiaDoMesISO(hoje);
+  const filtroPeriodo =
+    periodo === "todos" ? null : intervaloPeriodo(dataInicio ?? padraoInicio, dataFim ?? padraoFim);
 
   const lancamentos = await db.lancamento.findMany({
     where: {
       empresaId: session!.user.empresaId!,
       ...(status ? { status: status as StatusLancamento } : {}),
-      ...(dataFiltro ? { criadoEm: intervaloDoDia(dataFiltro) } : {}),
+      ...(filtroPeriodo ? { criadoEm: filtroPeriodo } : {}),
     },
     include: {
       deposito: true,
@@ -65,21 +67,34 @@ export default async function LancamentosPage({
     orderBy: { numero: "desc" },
   });
 
-  const itensLista: ItemLancamento[] = lancamentos.map((l) => ({
-    id: l.id,
-    numero: l.numero,
-    tipoLabel: TIPO_LABEL[l.tipo],
-    statusLabel: STATUS_LABEL[l.status],
-    statusVariant: STATUS_VARIANT[l.status],
-    depositoLabel:
-      l.tipo === "transferencia"
-        ? `${l.depositoOrigem?.nome ?? "-"} → ${l.depositoDestino?.nome ?? "-"}`
-        : (l.deposito?.nome ?? "-"),
-    data: new Date(l.criadoEm).toLocaleDateString("pt-BR"),
-    buscaTexto: [`lançamento #${l.numero}`, TIPO_LABEL[l.tipo], ...l.itens.map((i) => i.produto.nome)]
-      .join(" ")
-      .toLowerCase(),
-  }));
+  const itensLista: ItemLancamento[] = lancamentos.map((l) => {
+    const ehEntrada = ENTRADA_TIPOS.has(l.tipo);
+    const ehVenda = l.tipo === "venda";
+
+    let total = "-";
+    if (ehEntrada && mostrarCusto) {
+      total = formatarMoeda(l.itens.reduce((acc, i) => acc + Number(i.quantidade) * Number(i.custoUnitario ?? 0), 0));
+    } else if (ehVenda) {
+      total = formatarMoeda(l.itens.reduce((acc, i) => acc + Number(i.quantidade) * Number(i.precoVenda ?? 0), 0));
+    }
+
+    return {
+      id: l.id,
+      numero: l.numero,
+      tipoLabel: TIPO_LABEL[l.tipo],
+      statusLabel: STATUS_LABEL[l.status],
+      statusVariant: STATUS_VARIANT[l.status],
+      depositoLabel:
+        l.tipo === "transferencia"
+          ? `${l.depositoOrigem?.nome ?? "-"} → ${l.depositoDestino?.nome ?? "-"}`
+          : (l.deposito?.nome ?? "-"),
+      data: new Date(l.criadoEm).toLocaleDateString("pt-BR"),
+      total,
+      buscaTexto: [`lançamento #${l.numero}`, TIPO_LABEL[l.tipo], ...l.itens.map((i) => i.produto.nome)]
+        .join(" ")
+        .toLowerCase(),
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -89,7 +104,7 @@ export default async function LancamentosPage({
       </div>
 
       <StatusLancamentoFilter />
-      <DataLancamentoFilter padrao={hojeISO} />
+      <PeriodoFilter padraoInicio={padraoInicio} padraoFim={padraoFim} />
 
       <LancamentosLista itens={itensLista} />
     </div>

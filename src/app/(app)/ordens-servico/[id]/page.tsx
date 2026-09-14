@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { obterUltimosPrecosVenda } from "@/lib/tabela-preco";
+import { obterProdutosComEstoquePorDeposito } from "@/lib/estoque-disponivel";
 import { Badge } from "@/components/ui/badge";
 import { OSForm } from "@/components/os-form";
 import { OSStatusActions } from "@/components/os-status-actions";
@@ -29,7 +30,7 @@ export default async function DetalheOrdemServicoPage({ params }: { params: Prom
   const grupoId = session!.user.grupoId!;
   const empresaId = session!.user.empresaId!;
 
-  const [os, clientes, depositos, vendedores, produtos, servicos, tabelasPreco, itensTabelaPreco, ultimosPrecos] =
+  const [os, clientes, depositos, vendedores, produtos, servicos, tabelasPreco, itensTabelaPreco, ultimosPrecos, produtosComEstoquePorDeposito] =
     await Promise.all([
       db.ordemServico.findFirst({
         where: { id, empresaId },
@@ -49,6 +50,7 @@ export default async function DetalheOrdemServicoPage({ params }: { params: Prom
       db.tabelaPreco.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
       db.itemTabelaPreco.findMany({ where: { tabelaPreco: { grupoId } } }),
       obterUltimosPrecosVenda(empresaId),
+      obterProdutosComEstoquePorDeposito(empresaId),
     ]);
   if (!os) notFound();
 
@@ -76,24 +78,26 @@ export default async function DetalheOrdemServicoPage({ params }: { params: Prom
         </Badge>
       </div>
 
-      <OSStatusActions
-        status={os.status}
-        iniciarAction={iniciarOrdemServico.bind(null, id)}
-        concluirAction={concluirOrdemServico.bind(null, id)}
-        cancelarAction={cancelarOrdemServico.bind(null, id)}
-      />
-
       {editavel ? (
         <OSForm
           action={atualizarOrdemServico.bind(null, id)}
           clientes={clientes.map((c) => ({ id: c.id, label: c.nome, tabelaPrecoPadraoId: c.tabelaPrecoPadraoId }))}
           depositos={depositos.map((d) => ({ id: d.id, label: d.nome }))}
           vendedores={vendedores.map((v) => ({ id: v.id, label: v.nome }))}
-          produtos={produtos.map((p) => ({ id: p.id, label: `${p.nome} — ${p.sku}` }))}
+          produtos={produtos.map((p) => ({ id: p.id, label: `${p.nome} — ${p.sku}`, controlaEstoque: p.controlaEstoque }))}
           servicos={servicos.map((s) => ({ id: s.id, label: s.nome, precoPadrao: Number(s.precoPadrao) }))}
           tabelasPreco={tabelasPreco.map((t) => ({ id: t.id, label: t.nome }))}
           precosPorTabela={precosPorTabela}
           ultimosPrecosVenda={Object.fromEntries(ultimosPrecos)}
+          produtosComEstoquePorDeposito={produtosComEstoquePorDeposito}
+          acoesExtras={
+            <OSStatusActions
+              status={os.status}
+              iniciarAction={iniciarOrdemServico.bind(null, id)}
+              concluirAction={concluirOrdemServico.bind(null, id)}
+              cancelarAction={cancelarOrdemServico.bind(null, id)}
+            />
+          }
           defaultValues={{
             clienteId: os.clienteId,
             depositoId: os.depositoId,

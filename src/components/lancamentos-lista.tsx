@@ -13,6 +13,7 @@ export type ItemLancamento = {
   statusVariant: "default" | "secondary" | "destructive";
   depositoLabel: string;
   data: string;
+  total: string;
   buscaTexto: string;
 };
 
@@ -23,7 +24,7 @@ export function LancamentosLista({ itens }: { itens: ItemLancamento[] }) {
   const filtrados = termo ? itens.filter((i) => i.buscaTexto.includes(termo)) : itens;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <Input
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
@@ -36,30 +37,34 @@ export function LancamentosLista({ itens }: { itens: ItemLancamento[] }) {
           {termo ? `Nenhum lançamento encontrado para "${busca.trim()}".` : "Nenhum lançamento cadastrado."}
         </p>
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-2">
           {filtrados.map((item) => (
             <li key={item.id}>
               <Link
                 href={`/lancamentos/${item.id}`}
-                className="relative block rounded-lg border border-border bg-card p-5 active:bg-accent"
+                className="relative block rounded-lg border border-border bg-card p-3 active:bg-accent"
               >
-                <Badge variant={item.statusVariant} className="absolute top-5 right-5">
+                <Badge variant={item.statusVariant} className="absolute top-3 right-3">
                   {item.statusLabel}
                 </Badge>
-                <h2 className="mb-4 text-lg font-semibold">Lançamento #{item.numero}</h2>
+                <h2 className="mb-2 text-[15px] font-semibold">Lançamento #{item.numero}</h2>
 
-                <div className="mb-4 grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
                   <div className="min-w-0">
-                    <div className="mb-1 truncate text-[13px] text-muted-foreground">Tipo</div>
-                    <div className="truncate text-[15.5px] font-medium">{item.tipoLabel}</div>
+                    <div className="truncate text-[11px] leading-tight text-muted-foreground">Tipo</div>
+                    <div className="truncate text-[14px] leading-tight font-medium">{item.tipoLabel}</div>
                   </div>
                   <div className="min-w-0">
-                    <div className="mb-1 truncate text-[13px] text-muted-foreground">Depósito</div>
-                    <div className="truncate text-[15.5px] font-medium">{item.depositoLabel}</div>
+                    <div className="truncate text-[11px] leading-tight text-muted-foreground">Depósito</div>
+                    <div className="truncate text-[14px] leading-tight font-medium">{item.depositoLabel}</div>
                   </div>
                   <div className="min-w-0">
-                    <div className="mb-1 truncate text-[13px] text-muted-foreground">Data</div>
-                    <div className="truncate text-[15.5px] font-medium">{item.data}</div>
+                    <div className="truncate text-[11px] leading-tight text-muted-foreground">Data</div>
+                    <div className="truncate text-[14px] leading-tight font-medium">{item.data}</div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-[11px] leading-tight text-muted-foreground">Total</div>
+                    <div className="truncate text-[14px] leading-tight font-medium">{item.total}</div>
                   </div>
                 </div>
               </Link>

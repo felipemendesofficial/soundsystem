@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { OrcamentoForm } from "@/components/orcamento-form";
 import { OrcamentoStatusActions } from "@/components/orcamento-status-actions";
-import { atualizarOrcamento, cancelarFechamentoOrcamento, finalizarOrcamento } from "../actions";
+import { atualizarOrcamento, cancelarFechamentoOrcamento, excluirOrcamento, finalizarOrcamento } from "../actions";
 
 const STATUS_LABEL: Record<string, string> = {
   aberto: "Aberto",
@@ -65,18 +65,20 @@ export default async function DetalheOrcamentoPage({ params }: { params: Promise
         </Badge>
       </div>
 
-      <OrcamentoStatusActions
-        status={orcamento.status}
-        finalizarAction={finalizarOrcamento.bind(null, id)}
-        cancelarFechamentoAction={cancelarFechamentoOrcamento.bind(null, id)}
-      />
-
       {editavel ? (
         <OrcamentoForm
           action={atualizarOrcamento.bind(null, id)}
           depositos={depositos.map((d) => ({ id: d.id, label: d.nome }))}
           fornecedores={fornecedores.map((f) => ({ id: f.id, label: f.nome }))}
           produtos={produtos.map((p) => ({ id: p.id, label: `${p.nome} — ${p.sku}` }))}
+          acoesExtras={
+            <OrcamentoStatusActions
+              status={orcamento.status}
+              finalizarAction={finalizarOrcamento.bind(null, id)}
+              cancelarFechamentoAction={cancelarFechamentoOrcamento.bind(null, id)}
+              excluirAction={excluirOrcamento.bind(null, id)}
+            />
+          }
           defaultValues={{
             descricao: orcamento.descricao,
             depositoId: orcamento.depositoId,
@@ -146,6 +148,20 @@ export default async function DetalheOrcamentoPage({ params }: { params: Promise
             </div>
           </div>
         </div>
+      )}
+
+      {!editavel && (
+        <>
+          <div className="h-16" />
+          <div className="fixed bottom-[57px] left-0 right-0 z-30 mx-auto flex w-full max-w-[400px] items-center gap-2 overflow-x-auto border-t border-border bg-card px-[18px] py-2.5 [scrollbar-width:none]">
+            <OrcamentoStatusActions
+              status={orcamento.status}
+              finalizarAction={finalizarOrcamento.bind(null, id)}
+              cancelarFechamentoAction={cancelarFechamentoOrcamento.bind(null, id)}
+              excluirAction={excluirOrcamento.bind(null, id)}
+            />
+          </div>
+        </>
       )}
     </div>
   );

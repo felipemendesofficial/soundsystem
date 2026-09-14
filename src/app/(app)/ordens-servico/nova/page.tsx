@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { obterUltimosPrecosVenda } from "@/lib/tabela-preco";
+import { obterProdutosComEstoquePorDeposito } from "@/lib/estoque-disponivel";
 import { criarOrdemServico } from "../actions";
 import { OSForm } from "@/components/os-form";
 
@@ -9,7 +10,7 @@ export default async function NovaOrdemServicoPage() {
   const grupoId = session!.user.grupoId!;
   const empresaId = session!.user.empresaId!;
 
-  const [clientes, depositos, vendedores, produtos, servicos, tabelasPreco, itensTabelaPreco, ultimosPrecos] =
+  const [clientes, depositos, vendedores, produtos, servicos, tabelasPreco, itensTabelaPreco, ultimosPrecos, produtosComEstoquePorDeposito] =
     await Promise.all([
       db.cliente.findMany({ where: { grupoId }, orderBy: { nome: "asc" } }),
       db.deposito.findMany({ where: { ativo: true, empresaId }, orderBy: { nome: "asc" } }),
@@ -19,6 +20,7 @@ export default async function NovaOrdemServicoPage() {
       db.tabelaPreco.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
       db.itemTabelaPreco.findMany({ where: { tabelaPreco: { grupoId } } }),
       obterUltimosPrecosVenda(empresaId),
+      obterProdutosComEstoquePorDeposito(empresaId),
     ]);
 
   const precosPorTabela: Record<string, Record<string, number>> = {};
@@ -35,11 +37,12 @@ export default async function NovaOrdemServicoPage() {
         clientes={clientes.map((c) => ({ id: c.id, label: c.nome, tabelaPrecoPadraoId: c.tabelaPrecoPadraoId }))}
         depositos={depositos.map((d) => ({ id: d.id, label: d.nome }))}
         vendedores={vendedores.map((v) => ({ id: v.id, label: v.nome }))}
-        produtos={produtos.map((p) => ({ id: p.id, label: `${p.nome} — ${p.sku}` }))}
+        produtos={produtos.map((p) => ({ id: p.id, label: `${p.nome} — ${p.sku}`, controlaEstoque: p.controlaEstoque }))}
         servicos={servicos.map((s) => ({ id: s.id, label: s.nome, precoPadrao: Number(s.precoPadrao) }))}
         tabelasPreco={tabelasPreco.map((t) => ({ id: t.id, label: t.nome }))}
         precosPorTabela={precosPorTabela}
         ultimosPrecosVenda={Object.fromEntries(ultimosPrecos)}
+        produtosComEstoquePorDeposito={produtosComEstoquePorDeposito}
         depositoPadraoId={session!.user.depositoPadraoId}
       />
     </div>

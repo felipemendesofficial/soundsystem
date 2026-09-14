@@ -11,7 +11,7 @@ export async function obterUltimosPrecosVenda(empresaId: string): Promise<Map<st
   const linhas = await db.$queryRaw<{ produto_id: string; preco_venda: string }[]>`
     SELECT DISTINCT ON (produto_id) produto_id, preco_venda
     FROM movimentacoes
-    WHERE tipo_movimento IN ('venda', 'os_saida') AND preco_venda IS NOT NULL AND empresa_id = ${empresaId}::uuid
+    WHERE tipo_movimento IN ('venda', 'os_saida') AND preco_venda IS NOT NULL AND empresa_id = ${empresaId}
     ORDER BY produto_id, data_movimento DESC
   `;
   return new Map(linhas.map((l) => [l.produto_id, Number(l.preco_venda)]));
@@ -31,7 +31,7 @@ export async function obterCustoMedioCombinadoPorProduto(empresaId: string): Pro
         ELSE 0
       END AS custo_medio
     FROM produto_estoque
-    WHERE empresa_id = ${empresaId}::uuid
+    WHERE empresa_id = ${empresaId}
     GROUP BY produto_id
   `;
   return new Map(linhas.map((l) => [l.produto_id, Number(l.custo_medio)]));

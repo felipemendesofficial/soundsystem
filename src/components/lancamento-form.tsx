@@ -50,6 +50,7 @@ const TODOS_OS_TIPOS = [
 ];
 
 type Item = { id: string; label: string };
+type ProdutoItem = Item & { controlaEstoque: boolean };
 type ClienteItem = Item & { tabelaPrecoPadraoId: string | null };
 type VendedorItem = Item;
 
@@ -88,12 +89,14 @@ export function LancamentoForm({
   tabelasPreco,
   precosPorTabela,
   ultimosPrecosVenda,
+  produtosComEstoquePorDeposito,
   perfil,
   depositoPadraoId,
+  acoesExtras,
   defaultValues,
 }: {
   action: Action;
-  produtos: Item[];
+  produtos: ProdutoItem[];
   depositos: Item[];
   fornecedores: Item[];
   clientes: ClienteItem[];
@@ -101,8 +104,10 @@ export function LancamentoForm({
   tabelasPreco: Item[];
   precosPorTabela: Record<string, Record<string, number>>;
   ultimosPrecosVenda: Record<string, number>;
+  produtosComEstoquePorDeposito: Record<string, string[]>;
   perfil: string;
   depositoPadraoId?: string | null;
+  acoesExtras?: React.ReactNode;
   defaultValues?: {
     tipo: string;
     depositoId: string | null;
@@ -134,6 +139,10 @@ export function LancamentoForm({
   // do React de componente trocando de não-controlado pra controlado.
   const [clienteId, setClienteId] = useState(defaultValues?.clienteId ?? "");
   const [vendedorId, setVendedorId] = useState(defaultValues?.vendedorId ?? "");
+  const [depositoId, setDepositoId] = useState(defaultValues?.depositoId ?? depositoPadraoId ?? "");
+  const [depositoOrigemId, setDepositoOrigemId] = useState(
+    defaultValues?.depositoOrigemId ?? depositoPadraoId ?? ""
+  );
   const [tabelaPrecoId, setTabelaPrecoId] = useState("");
   const [modoAjuste, setModoAjuste] = useState<ModoAjuste>("nenhum");
   const [formatoAjuste, setFormatoAjuste] = useState<FormatoAjuste>("percentual");
@@ -150,6 +159,18 @@ export function LancamentoForm({
   const ehSaida = SAIDA_TIPOS.has(tipoMovimento);
   const ehVenda = tipoMovimento === "venda";
   const ehTransferencia = tipoMovimento === "transferencia";
+
+  // Nos tipos que dão saída de estoque (inclusive a origem de uma
+  // transferência), só oferece produtos com saldo positivo no depósito
+  // escolhido — produtos com controlaEstoque=false ficam sempre disponíveis,
+  // já que o saldo deles não é rastreado.
+  const depositoRelevanteParaSaida = ehTransferencia ? depositoOrigemId : depositoId;
+  const produtosParaEscolher: Item[] =
+    ehSaida || ehTransferencia
+      ? produtos.filter(
+          (p) => !p.controlaEstoque || (produtosComEstoquePorDeposito[depositoRelevanteParaSaida] ?? []).includes(p.id)
+        )
+      : produtos;
 
   // Sugestão de preço ao escolher um produto numa venda: preço fixado na
   // tabela de preço ativa, senão o último preço de venda já praticado para
@@ -185,6 +206,11 @@ export function LancamentoForm({
     { modo: modoAjuste, formato: formatoAjuste, valor: Number(valorAjuste) || 0 }
   );
 
+  const totalEntrada = linhasComProduto.reduce(
+    (acc, l) => acc + (Number(l.quantidade) || 0) * (Number(l.custoUnitario) || 0),
+    0
+  );
+
   const itensSerializados = JSON.stringify(
     linhasComProduto.map((l, idx) => ({
       produtoId: l.produto!.id,
@@ -206,7 +232,8 @@ export function LancamentoForm({
   );
 
   return (
-    <form action={formAction} className="max-w-lg space-y-6">
+    <>
+    <form id="lancamento-form" action={formAction} className="max-w-lg space-y-6">
       <input type="hidden" name="tipo" value={tipoMovimento} />
       <input type="hidden" name="itens" value={itensSerializados} />
 
@@ -244,8 +271,9 @@ export function LancamentoForm({
             <Label htmlFor="depositoOrigemId" className={labelClass}>Depósito de Origem</Label>
             <Select
               name="depositoOrigemId"
-              defaultValue={defaultValues?.depositoOrigemId ?? depositoPadraoId ?? undefined}
+              value={depositoOrigemId}
               items={depositosItems}
+              onValueChange={(valor) => setDepositoOrigemId(valor ?? "")}
             >
               <SelectTrigger id="depositoOrigemId" className={`w-full ${inputClass}`}>
                 <SelectValue placeholder="Selecione o depósito" />
@@ -278,7 +306,12 @@ export function LancamentoForm({
       ) : (
         <div className="space-y-2">
           <Label htmlFor="depositoId" className={labelClass}>Depósito</Label>
-          <Select name="depositoId" defaultValue={defaultValues?.depositoId ?? depositoPadraoId ?? undefined} items={depositosItems}>
+          <Select
+            name="depositoId"
+            value={depositoId}
+            items={depositosItems}
+            onValueChange={(valor) => setDepositoId(valor ?? "")}
+          >
             <SelectTrigger id="depositoId" className={`w-full ${inputClass}`}>
               <SelectValue placeholder="Selecione o depósito" />
             </SelectTrigger>
@@ -410,7 +443,7 @@ export function LancamentoForm({
               </div>
 
               <Combobox
-                items={produtos}
+                items={produtosParaEscolher}
                 value={linha.produto}
                 onValueChange={(item: Item | null) =>
                   atualizarLinha(linha.key, {
@@ -490,6 +523,15 @@ export function LancamentoForm({
         </ul>
       </div>
 
+      {ehEntrada && linhasComProduto.length > 0 && (
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center justify-between text-base font-semibold">
+            <span>Total</span>
+            <span>{formatarMoeda(totalEntrada)}</span>
+          </div>
+        </div>
+      )}
+
       {ehVenda && linhasComProduto.length > 0 && (
         <div className="space-y-3 rounded-lg border border-border bg-card p-4">
           <Label className={labelClass}>Desconto / Acréscimo (opcional)</Label>
@@ -551,8 +593,12 @@ export function LancamentoForm({
                 onChange={(e) => setValorAjuste(e.target.value)}
                 className="h-10 bg-background"
               />
+            </>
+          )}
 
-              <div className="space-y-1 border-t border-border pt-3 text-sm">
+          <div className="space-y-1 border-t border-border pt-3 text-sm">
+            {modoAjuste !== "nenhum" && (
+              <>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Subtotal</span>
                   <span className="font-medium">{formatarMoeda(resultadoAjuste.subtotal)}</span>
@@ -566,13 +612,13 @@ export function LancamentoForm({
                     {formatarMoeda(resultadoAjuste.valorAjuste)}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-base font-semibold">
-                  <span>Total</span>
-                  <span>{formatarMoeda(resultadoAjuste.total)}</span>
-                </div>
-              </div>
-            </>
-          )}
+              </>
+            )}
+            <div className="flex items-center justify-between text-base font-semibold">
+              <span>Total</span>
+              <span>{formatarMoeda(resultadoAjuste.total)}</span>
+            </div>
+          </div>
         </div>
       )}
 
@@ -582,14 +628,17 @@ export function LancamentoForm({
       </div>
 
       {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}
-      <div className="flex gap-3">
-        <Button type="submit" disabled={pending} className="h-11 px-7 text-base">
-          {pending ? "Salvando..." : "Salvar"}
-        </Button>
-        <Button type="button" variant="outline" render={<Link href="/lancamentos" />} className="h-11 px-7 text-base">
-          Cancelar
-        </Button>
-      </div>
+      <div className="h-16" />
     </form>
+    <div className="fixed bottom-[57px] left-0 right-0 z-30 mx-auto flex w-full max-w-[400px] items-center gap-2 overflow-x-auto border-t border-border bg-card px-[18px] py-2.5 [scrollbar-width:none]">
+      {acoesExtras}
+      <Button type="submit" form="lancamento-form" disabled={pending} size="sm" className="flex-none whitespace-nowrap">
+        {pending ? "Salvando..." : "Salvar"}
+      </Button>
+      <Button type="button" variant="outline" size="sm" render={<Link href="/lancamentos" />} className="flex-none whitespace-nowrap">
+        Voltar
+      </Button>
+    </div>
+    </>
   );
 }

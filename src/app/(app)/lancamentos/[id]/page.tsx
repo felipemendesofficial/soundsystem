@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { podeVerCusto } from "@/lib/permissions";
 import { obterUltimosPrecosVenda } from "@/lib/tabela-preco";
+import { obterProdutosComEstoquePorDeposito } from "@/lib/estoque-disponivel";
 import { Badge } from "@/components/ui/badge";
 import { LancamentoForm } from "@/components/lancamento-form";
 import { LancamentoStatusActions } from "@/components/lancamento-status-actions";
@@ -45,7 +46,7 @@ export default async function DetalheLancamentoPage({ params }: { params: Promis
   const empresaId = session!.user.empresaId!;
   const mostrarCusto = podeVerCusto(perfil);
 
-  const [lancamento, produtos, depositos, fornecedores, clientes, vendedores, tabelasPreco, itensTabelaPreco, ultimosPrecos] =
+  const [lancamento, produtos, depositos, fornecedores, clientes, vendedores, tabelasPreco, itensTabelaPreco, ultimosPrecos, produtosComEstoquePorDeposito] =
     await Promise.all([
       db.lancamento.findFirst({
         where: { id, empresaId },
@@ -67,6 +68,7 @@ export default async function DetalheLancamentoPage({ params }: { params: Promis
       db.tabelaPreco.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
       db.itemTabelaPreco.findMany({ where: { tabelaPreco: { grupoId } } }),
       obterUltimosPrecosVenda(empresaId),
+      obterProdutosComEstoquePorDeposito(empresaId),
     ]);
   if (!lancamento) notFound();
 
@@ -97,18 +99,10 @@ export default async function DetalheLancamentoPage({ params }: { params: Promis
         </Badge>
       </div>
 
-      <LancamentoStatusActions
-        status={lancamento.status}
-        tipo={lancamento.tipo}
-        finalizarAction={finalizarLancamento.bind(null, id)}
-        cancelarFechamentoAction={cancelarFechamentoLancamento.bind(null, id)}
-        excluirAction={excluirLancamento.bind(null, id)}
-      />
-
       {editavel ? (
         <LancamentoForm
           action={atualizarLancamento.bind(null, id)}
-          produtos={produtos.map((p) => ({ id: p.id, label: `${p.nome} — ${p.sku}` }))}
+          produtos={produtos.map((p) => ({ id: p.id, label: `${p.nome} — ${p.sku}`, controlaEstoque: p.controlaEstoque }))}
           depositos={depositos.map((d) => ({ id: d.id, label: d.nome }))}
           fornecedores={fornecedores.map((f) => ({ id: f.id, label: f.nome }))}
           clientes={clientes.map((c) => ({ id: c.id, label: c.nome, tabelaPrecoPadraoId: c.tabelaPrecoPadraoId }))}
@@ -116,7 +110,17 @@ export default async function DetalheLancamentoPage({ params }: { params: Promis
           tabelasPreco={tabelasPreco.map((t) => ({ id: t.id, label: t.nome }))}
           precosPorTabela={precosPorTabela}
           ultimosPrecosVenda={Object.fromEntries(ultimosPrecos)}
+          produtosComEstoquePorDeposito={produtosComEstoquePorDeposito}
           perfil={perfil}
+          acoesExtras={
+            <LancamentoStatusActions
+              status={lancamento.status}
+              tipo={lancamento.tipo}
+              finalizarAction={finalizarLancamento.bind(null, id)}
+              cancelarFechamentoAction={cancelarFechamentoLancamento.bind(null, id)}
+              excluirAction={excluirLancamento.bind(null, id)}
+            />
+          }
           defaultValues={{
             tipo: lancamento.tipo,
             depositoId: lancamento.depositoId,
@@ -196,6 +200,21 @@ export default async function DetalheLancamentoPage({ params }: { params: Promis
             )}
           </div>
         </div>
+      )}
+
+      {!editavel && !(lancamento.tipo === "transferencia" && lancamento.status === "fechado") && (
+        <>
+          <div className="h-16" />
+          <div className="fixed bottom-[57px] left-0 right-0 z-30 mx-auto flex w-full max-w-[400px] items-center gap-2 overflow-x-auto border-t border-border bg-card px-[18px] py-2.5 [scrollbar-width:none]">
+            <LancamentoStatusActions
+              status={lancamento.status}
+              tipo={lancamento.tipo}
+              finalizarAction={finalizarLancamento.bind(null, id)}
+              cancelarFechamentoAction={cancelarFechamentoLancamento.bind(null, id)}
+              excluirAction={excluirLancamento.bind(null, id)}
+            />
+          </div>
+        </>
       )}
     </div>
   );

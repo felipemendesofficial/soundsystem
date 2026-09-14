@@ -170,6 +170,24 @@ export async function atualizarOrcamento(
   redirect(`/orcamentos/${id}`);
 }
 
+export async function excluirOrcamento(
+  id: string,
+  _prev: OrcamentoFormState,
+  _formData: FormData
+): Promise<OrcamentoFormState> {
+  const permissao = await exigirPermissao();
+  if ("erro" in permissao) return permissao;
+
+  const orcamento = await db.orcamento.findFirst({ where: { id, empresaId: permissao.session.user.empresaId! } });
+  if (!orcamento) return { erro: "Orçamento não encontrado." };
+  if (orcamento.status !== "aberto") return { erro: "Esse Orçamento não está aberto." };
+
+  await db.orcamento.delete({ where: { id } });
+
+  revalidatePath("/orcamentos");
+  redirect("/orcamentos");
+}
+
 /**
  * Fecha o Orçamento: calcula o rateio final (mesma lógica de src/lib/orcamento.ts
  * usada na prévia da tela), congela o custo de compra calculado em cada item e

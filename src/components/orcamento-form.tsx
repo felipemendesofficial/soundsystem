@@ -58,6 +58,7 @@ export function OrcamentoForm({
   fornecedores,
   produtos,
   depositoPadraoId,
+  acoesExtras,
   defaultValues,
 }: {
   action: Action;
@@ -65,6 +66,7 @@ export function OrcamentoForm({
   fornecedores: Item[];
   produtos: Item[];
   depositoPadraoId?: string | null;
+  acoesExtras?: React.ReactNode;
   defaultValues?: {
     descricao: string | null;
     depositoId: string;
@@ -148,7 +150,8 @@ export function OrcamentoForm({
   }, [linhas, modoCalculo, taxaRevenda, valorCompraTotalInformado]);
 
   return (
-    <form action={formAction} className="max-w-lg space-y-6">
+    <>
+    <form id="orcamento-form" action={formAction} className="max-w-lg space-y-6">
       <input type="hidden" name="itens" value={itensSerializados} />
       <input type="hidden" name="modoCalculo" value={modoCalculo} />
 
@@ -366,14 +369,17 @@ export function OrcamentoForm({
       </div>
 
       {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}
-      <div className="flex gap-3">
-        <Button type="submit" disabled={pending} className="h-11 px-7 text-base">
-          {pending ? "Salvando..." : "Salvar Orçamento"}
-        </Button>
-        <Button type="button" variant="outline" render={<Link href="/orcamentos" />} className="h-11 px-7 text-base">
-          Cancelar
-        </Button>
-      </div>
+      <div className="h-16" />
     </form>
+    <div className="fixed bottom-[57px] left-0 right-0 z-30 mx-auto flex w-full max-w-[400px] items-center gap-2 overflow-x-auto border-t border-border bg-card px-[18px] py-2.5 [scrollbar-width:none]">
+      {acoesExtras}
+      <Button type="submit" form="orcamento-form" disabled={pending} size="sm" className="flex-none whitespace-nowrap">
+        {pending ? "Salvando..." : "Salvar"}
+      </Button>
+      <Button type="button" variant="outline" size="sm" render={<Link href="/orcamentos" />} className="flex-none whitespace-nowrap">
+        Voltar
+      </Button>
+    </div>
+    </>
   );
 }

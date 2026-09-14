@@ -21,6 +21,7 @@ import type { OrdemServicoFormState } from "@/app/(app)/ordens-servico/actions";
 import { calcularAjusteTotal, type FormatoAjuste, type ModoAjuste } from "@/lib/ajuste-total";
 
 type Item = { id: string; label: string };
+type ProdutoItem = Item & { controlaEstoque: boolean };
 type ServicoItem = Item & { precoPadrao: number };
 type ClienteItem = Item & { tabelaPrecoPadraoId: string | null };
 type VendedorItem = Item;
@@ -58,19 +59,23 @@ export function OSForm({
   tabelasPreco,
   precosPorTabela,
   ultimosPrecosVenda,
+  produtosComEstoquePorDeposito,
   depositoPadraoId,
+  acoesExtras,
   defaultValues,
 }: {
   action: Action;
   clientes: ClienteItem[];
   depositos: Item[];
   vendedores: VendedorItem[];
-  produtos: Item[];
+  produtos: ProdutoItem[];
   servicos: ServicoItem[];
   tabelasPreco: Item[];
   precosPorTabela: Record<string, Record<string, number>>;
   ultimosPrecosVenda: Record<string, number>;
+  produtosComEstoquePorDeposito: Record<string, string[]>;
   depositoPadraoId?: string | null;
+  acoesExtras?: React.ReactNode;
   defaultValues?: {
     clienteId: string;
     depositoId: string;
@@ -100,6 +105,7 @@ export function OSForm({
   // do React de componente trocando de não-controlado pra controlado.
   const [clienteId, setClienteId] = useState(defaultValues?.clienteId ?? "");
   const [vendedorId, setVendedorId] = useState(defaultValues?.vendedorId ?? "");
+  const [depositoId, setDepositoId] = useState(defaultValues?.depositoId ?? depositoPadraoId ?? "");
   const [tabelaPrecoId, setTabelaPrecoId] = useState(
     () => clientes.find((c) => c.id === defaultValues?.clienteId)?.tabelaPrecoPadraoId ?? ""
   );
@@ -111,6 +117,13 @@ export function OSForm({
   const vendedoresItems = Object.fromEntries(vendedores.map((v) => [v.id, v.label]));
   const depositosItems = Object.fromEntries(depositos.map((d) => [d.id, d.label]));
   const tabelasPrecoItems = Object.fromEntries(tabelasPreco.map((t) => [t.id, t.label]));
+
+  // A OS sempre dá saída de estoque ao ser concluída — só oferece produtos
+  // com saldo positivo no depósito escolhido; produtos com
+  // controlaEstoque=false ficam sempre disponíveis (saldo não rastreado).
+  const produtosParaEscolher: Item[] = produtos.filter(
+    (p) => !p.controlaEstoque || (produtosComEstoquePorDeposito[depositoId] ?? []).includes(p.id)
+  );
 
   // Mesma lógica de sugestão de preço do Lançamento: preço fixado na
   // tabela de preço ativa, senão o último preço de venda já praticado.
@@ -163,7 +176,8 @@ export function OSForm({
   );
 
   return (
-    <form action={formAction} className="max-w-lg space-y-6">
+    <>
+    <form id="os-form" action={formAction} className="max-w-lg space-y-6">
       <input type="hidden" name="itens" value={itensSerializados} />
 
       <div className="space-y-2">
@@ -238,8 +252,9 @@ export function OSForm({
         <Label htmlFor="depositoId" className={labelClass}>Depósito</Label>
         <Select
           name="depositoId"
-          defaultValue={defaultValues?.depositoId ?? depositoPadraoId ?? undefined}
+          value={depositoId}
           items={depositosItems}
+          onValueChange={(valor) => setDepositoId(valor ?? "")}
         >
           <SelectTrigger id="depositoId" className={`w-full ${inputClass}`}>
             <SelectValue placeholder="De onde saem os produtos" />
@@ -275,7 +290,7 @@ export function OSForm({
 
         <ul className="space-y-3">
           {linhas.map((linha) => {
-            const opcoes: Item[] = linha.tipo === "produto" ? produtos : servicos;
+            const opcoes: Item[] = linha.tipo === "produto" ? produtosParaEscolher : servicos;
             return (
               <li key={linha.key} className="space-y-3 rounded-lg border border-border bg-card p-4">
                 <div className="flex items-center justify-between gap-2">
@@ -467,19 +482,23 @@ export function OSForm({
       </div>
 
       {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}
-      <div className="flex gap-3">
-        <Button type="submit" disabled={pending} className="h-11 px-7 text-base">
-          {pending ? "Salvando..." : "Salvar Ordem de Serviço"}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          render={<Link href="/ordens-servico" />}
-          className="h-11 px-7 text-base"
-        >
-          Cancelar
-        </Button>
-      </div>
+      <div className="h-16" />
     </form>
+    <div className="fixed bottom-[57px] left-0 right-0 z-30 mx-auto flex w-full max-w-[400px] items-center gap-2 overflow-x-auto border-t border-border bg-card px-[18px] py-2.5 [scrollbar-width:none]">
+      {acoesExtras}
+      <Button type="submit" form="os-form" disabled={pending} size="sm" className="flex-none whitespace-nowrap">
+        {pending ? "Salvando..." : "Salvar"}
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        render={<Link href="/ordens-servico" />}
+        className="flex-none whitespace-nowrap"
+      >
+        Voltar
+      </Button>
+    </div>
+    </>
   );
 }

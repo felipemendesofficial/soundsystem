@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { obterUltimosPrecosVenda } from "@/lib/tabela-preco";
+import { obterProdutosComEstoquePorDeposito } from "@/lib/estoque-disponivel";
 import { LancamentoForm } from "@/components/lancamento-form";
 import { criarLancamento } from "../actions";
 
@@ -10,7 +11,7 @@ export default async function NovoLancamentoPage() {
   const grupoId = session!.user.grupoId!;
   const empresaId = session!.user.empresaId!;
 
-  const [produtos, depositos, fornecedores, clientes, vendedores, tabelasPreco, itensTabelaPreco, ultimosPrecos] =
+  const [produtos, depositos, fornecedores, clientes, vendedores, tabelasPreco, itensTabelaPreco, ultimosPrecos, produtosComEstoquePorDeposito] =
     await Promise.all([
       db.produto.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
       db.deposito.findMany({ where: { ativo: true, empresaId }, orderBy: { nome: "asc" } }),
@@ -20,6 +21,7 @@ export default async function NovoLancamentoPage() {
       db.tabelaPreco.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
       db.itemTabelaPreco.findMany({ where: { tabelaPreco: { grupoId } } }),
       obterUltimosPrecosVenda(empresaId),
+      obterProdutosComEstoquePorDeposito(empresaId),
     ]);
 
   const precosPorTabela: Record<string, Record<string, number>> = {};
@@ -33,7 +35,7 @@ export default async function NovoLancamentoPage() {
       <h1 className="text-2xl font-semibold">Novo Lançamento</h1>
       <LancamentoForm
         action={criarLancamento}
-        produtos={produtos.map((p) => ({ id: p.id, label: `${p.nome} — ${p.sku}` }))}
+        produtos={produtos.map((p) => ({ id: p.id, label: `${p.nome} — ${p.sku}`, controlaEstoque: p.controlaEstoque }))}
         depositos={depositos.map((d) => ({ id: d.id, label: d.nome }))}
         fornecedores={fornecedores.map((f) => ({ id: f.id, label: f.nome }))}
         clientes={clientes.map((c) => ({ id: c.id, label: c.nome, tabelaPrecoPadraoId: c.tabelaPrecoPadraoId }))}
@@ -41,6 +43,7 @@ export default async function NovoLancamentoPage() {
         tabelasPreco={tabelasPreco.map((t) => ({ id: t.id, label: t.nome }))}
         precosPorTabela={precosPorTabela}
         ultimosPrecosVenda={Object.fromEntries(ultimosPrecos)}
+        produtosComEstoquePorDeposito={produtosComEstoquePorDeposito}
         perfil={perfil}
         depositoPadraoId={session!.user.depositoPadraoId}
       />

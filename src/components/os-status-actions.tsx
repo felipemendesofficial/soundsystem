@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import type { OrdemServicoFormState } from "@/app/(app)/ordens-servico/actions";
 
@@ -16,12 +17,16 @@ function StatusButton({
   variant?: "default" | "outline" | "destructive";
 }) {
   const [state, formAction, pending] = useActionState(action, {});
+
+  useEffect(() => {
+    if (state.erro) toast.error(state.erro);
+  }, [state.erro]);
+
   return (
-    <form action={formAction} className="flex flex-col items-start gap-1">
-      <Button type="submit" disabled={pending} variant={variant} className="h-11 px-7 text-base">
+    <form action={formAction} className="flex-none">
+      <Button type="submit" disabled={pending} variant={variant} size="sm" className="whitespace-nowrap">
         {pending ? "Aguarde..." : label}
       </Button>
-      {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}
     </form>
   );
 }
@@ -40,10 +45,10 @@ export function OSStatusActions({
   if (status === "concluida" || status === "cancelada") return null;
 
   return (
-    <div className="flex flex-wrap gap-3">
+    <>
       {status === "aberta" && <StatusButton action={iniciarAction} label="Iniciar" variant="outline" />}
-      <StatusButton action={concluirAction} label="Concluir (baixa o estoque)" />
+      <StatusButton action={concluirAction} label="Concluir" />
       <StatusButton action={cancelarAction} label="Cancelar OS" variant="destructive" />
-    </div>
+    </>
   );
 }
