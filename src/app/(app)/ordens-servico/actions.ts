@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { podeLancarMovimentacao } from "@/lib/permissions";
 import {
+  estornarLinhaDeMovimentoNaTransacao,
   mensagemSaldoInsuficiente,
   registrarSaidaNaTransacao,
   resolverTenantPorDeposito,
@@ -232,6 +233,55 @@ export async function concluirOrdemServico(
         where: { id },
         data: { status: "concluida", concluidaEm: new Date() },
       });
+    });
+  } catch (error) {
+    if (error instanceof SaldoInsuficienteError) return { erro: await mensagemSaldoInsuficiente(error) };
+    if (error instanceof Error) return { erro: error.message };
+    throw error;
+  }
+
+  revalidatePath(`/ordens-servico/${id}`);
+  revalidatePath("/ordens-servico");
+  revalidatePath("/estoque");
+  return {};
+}
+
+/**
+ * Estorna a conclusão de uma OS: devolve ao estoque exatamente a quantidade e
+ * o custo que a baixa (`os_saida`) de cada item tirou (ver
+ * `estornarLinhaDeMovimentoNaTransacao` em src/lib/kardex.ts) e volta a OS
+ * para "em_andamento", pronta pra ser editada e concluída de novo.
+ */
+export async function estornarConclusaoOrdemServico(
+  id: string,
+  _prev: OrdemServicoFormState,
+  _formData: FormData
+): Promise<OrdemServicoFormState> {
+  const permissao = await exigirPermissao();
+  if ("erro" in permissao) return permissao;
+  const { session } = permissao;
+
+  try {
+    await db.$transaction(async (tx) => {
+      const os = await tx.ordemServico.findFirst({ where: { id, empresaId: session.user.empresaId! } });
+      if (!os) throw new Error("Ordem de Serviço não encontrada.");
+      if (os.status !== "concluida") throw new Error("Essa Ordem de Serviço não está concluída.");
+
+      const movimentos = await tx.movimentacao.findMany({
+        where: { ordemServicoId: id, estornadoEm: null },
+        orderBy: { produtoId: "asc" },
+      });
+
+      for (const movimento of movimentos) {
+        await estornarLinhaDeMovimentoNaTransacao(
+          tx,
+          movimento,
+          session.user.id,
+          `Estorno da conclusão da OS #${os.numero}`
+        );
+      }
+
+      await tx.ordemServico.update({ where: { id }, data: { status: "em_andamento" } });
     });
   } catch (error) {
     if (error instanceof SaldoInsuficienteError) return { erro: await mensagemSaldoInsuficiente(error) };

@@ -10,6 +10,7 @@ import {
   atualizarOrdemServico,
   cancelarOrdemServico,
   concluirOrdemServico,
+  estornarConclusaoOrdemServico,
   iniciarOrdemServico,
 } from "../actions";
 
@@ -96,6 +97,7 @@ export default async function DetalheOrdemServicoPage({ params }: { params: Prom
               iniciarAction={iniciarOrdemServico.bind(null, id)}
               concluirAction={concluirOrdemServico.bind(null, id)}
               cancelarAction={cancelarOrdemServico.bind(null, id)}
+              estornarAction={estornarConclusaoOrdemServico.bind(null, id)}
             />
           }
           defaultValues={{
@@ -166,6 +168,21 @@ export default async function DetalheOrdemServicoPage({ params }: { params: Prom
             <p className="mt-4 text-right text-base font-semibold">Total: {formatarMoeda(total)}</p>
           </div>
         </div>
+      )}
+
+      {os.status === "concluida" && (
+        <>
+          <div className="h-16" />
+          <div className="fixed bottom-[57px] left-0 right-0 z-30 mx-auto flex w-full max-w-[400px] items-center gap-2 overflow-x-auto border-t border-border bg-card px-[18px] py-2.5 [scrollbar-width:none]">
+            <OSStatusActions
+              status={os.status}
+              iniciarAction={iniciarOrdemServico.bind(null, id)}
+              concluirAction={concluirOrdemServico.bind(null, id)}
+              cancelarAction={cancelarOrdemServico.bind(null, id)}
+              estornarAction={estornarConclusaoOrdemServico.bind(null, id)}
+            />
+          </div>
+        </>
       )}
     </div>
   );

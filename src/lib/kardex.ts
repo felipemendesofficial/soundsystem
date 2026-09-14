@@ -609,6 +609,7 @@ const TIPOS_SAIDA_ESTORNAVEL = new Set<TipoMovimento>([
   "perda_avaria",
   "uso_interno",
   "ajuste_saida",
+  "os_saida",
 ]);
 
 export type EstornarMovimentoInput = {

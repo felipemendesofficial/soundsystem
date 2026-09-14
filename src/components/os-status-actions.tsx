@@ -36,13 +36,19 @@ export function OSStatusActions({
   iniciarAction,
   concluirAction,
   cancelarAction,
+  estornarAction,
 }: {
   status: "aberta" | "em_andamento" | "concluida" | "cancelada";
   iniciarAction: Action;
   concluirAction: Action;
   cancelarAction: Action;
+  estornarAction: Action;
 }) {
-  if (status === "concluida" || status === "cancelada") return null;
+  if (status === "cancelada") return null;
+
+  if (status === "concluida") {
+    return <StatusButton action={estornarAction} label="Estornar Conclusão" variant="destructive" />;
+  }
 
   return (
     <>
