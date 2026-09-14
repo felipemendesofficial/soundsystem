@@ -1,14 +1,17 @@
 import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { atualizarProduto } from "../actions";
 import { ProdutoForm } from "../produto-form";
 
 export default async function EditarProdutoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const session = await auth();
+  const grupoId = session!.user.grupoId!;
   const [produto, categorias, unidadesMedida] = await Promise.all([
-    db.produto.findUnique({ where: { id } }),
-    db.categoria.findMany({ orderBy: { nome: "asc" } }),
-    db.unidadeMedida.findMany({ orderBy: { nome: "asc" } }),
+    db.produto.findFirst({ where: { id, grupoId } }),
+    db.categoria.findMany({ where: { grupoId }, orderBy: { nome: "asc" } }),
+    db.unidadeMedida.findMany({ where: { grupoId }, orderBy: { nome: "asc" } }),
   ]);
   if (!produto) notFound();
 

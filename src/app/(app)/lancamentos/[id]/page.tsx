@@ -41,12 +41,14 @@ export default async function DetalheLancamentoPage({ params }: { params: Promis
   const { id } = await params;
   const session = await auth();
   const perfil = session!.user.perfil;
+  const grupoId = session!.user.grupoId!;
+  const empresaId = session!.user.empresaId!;
   const mostrarCusto = podeVerCusto(perfil);
 
   const [lancamento, produtos, depositos, fornecedores, clientes, vendedores, tabelasPreco, itensTabelaPreco, ultimosPrecos] =
     await Promise.all([
-      db.lancamento.findUnique({
-        where: { id },
+      db.lancamento.findFirst({
+        where: { id, empresaId },
         include: {
           itens: { include: { produto: true } },
           deposito: true,
@@ -57,14 +59,14 @@ export default async function DetalheLancamentoPage({ params }: { params: Promis
           vendedor: true,
         },
       }),
-      db.produto.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-      db.deposito.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-      db.fornecedor.findMany({ orderBy: { nome: "asc" } }),
-      db.cliente.findMany({ orderBy: { nome: "asc" } }),
-      db.vendedor.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-      db.tabelaPreco.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-      db.itemTabelaPreco.findMany(),
-      obterUltimosPrecosVenda(),
+      db.produto.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
+      db.deposito.findMany({ where: { ativo: true, empresaId }, orderBy: { nome: "asc" } }),
+      db.fornecedor.findMany({ where: { grupoId }, orderBy: { nome: "asc" } }),
+      db.cliente.findMany({ where: { grupoId }, orderBy: { nome: "asc" } }),
+      db.vendedor.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
+      db.tabelaPreco.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
+      db.itemTabelaPreco.findMany({ where: { tabelaPreco: { grupoId } } }),
+      obterUltimosPrecosVenda(empresaId),
     ]);
   if (!lancamento) notFound();
 

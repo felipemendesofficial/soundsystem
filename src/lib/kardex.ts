@@ -57,13 +57,14 @@ type EstoqueTravado = {
 async function obterOuCriarEstoqueTravado(
   tx: Prisma.TransactionClient,
   produtoId: string,
-  depositoId: string
+  depositoId: string,
+  empresaId: string
 ): Promise<EstoqueTravado> {
   const rows = await tx.$queryRaw<
     { id: string; quantidade_saldo: string; custo_medio_atual: string; valor_total_saldo: string }[]
   >`
-    INSERT INTO produto_estoque (id, produto_id, deposito_id, quantidade_saldo, custo_medio_atual, valor_total_saldo, atualizado_em)
-    VALUES (gen_random_uuid(), ${produtoId}::uuid, ${depositoId}::uuid, 0, 0, 0, now())
+    INSERT INTO produto_estoque (id, produto_id, deposito_id, empresa_id, quantidade_saldo, custo_medio_atual, valor_total_saldo, atualizado_em)
+    VALUES (gen_random_uuid(), ${produtoId}::uuid, ${depositoId}::uuid, ${empresaId}::uuid, 0, 0, 0, now())
     ON CONFLICT (produto_id, deposito_id)
     DO UPDATE SET atualizado_em = produto_estoque.atualizado_em
     RETURNING id, quantidade_saldo, custo_medio_atual, valor_total_saldo
@@ -76,6 +77,24 @@ async function obterOuCriarEstoqueTravado(
     custoMedioAtual: new Prisma.Decimal(row.custo_medio_atual),
     valorTotalSaldo: new Prisma.Decimal(row.valor_total_saldo),
   };
+}
+
+/**
+ * Resolve empresaId/grupoId a partir do depositoId — Movimentacao e
+ * ProdutoEstoque denormalizam os dois (ver plano de retrofit multi-tenant em
+ * multi-tenant-grupo-empresa.md) pra permitir filtrar/reportar sem join;
+ * nunca aceitos como input direto de quem chama, sempre derivados aqui a
+ * partir do depósito de verdade.
+ */
+export async function resolverTenantPorDeposito(
+  tx: Prisma.TransactionClient | typeof db,
+  depositoId: string
+): Promise<{ empresaId: string; grupoId: string }> {
+  const deposito = await tx.deposito.findUniqueOrThrow({
+    where: { id: depositoId },
+    select: { empresaId: true, empresa: { select: { grupoId: true } } },
+  });
+  return { empresaId: deposito.empresaId, grupoId: deposito.empresa.grupoId };
 }
 
 function paraDecimal(valor: number | string | Prisma.Decimal): Prisma.Decimal {
@@ -129,12 +148,16 @@ export async function registrarEntradaNaTransacao(
     throw new Error("Custo unitário não pode ser negativo.");
   }
 
+  const { empresaId, grupoId } = await resolverTenantPorDeposito(tx, input.depositoId);
+
   if (!(await produtoControlaEstoque(tx, input.produtoId))) {
     const zero = new Prisma.Decimal(0);
     return tx.movimentacao.create({
       data: {
         produtoId: input.produtoId,
         depositoId: input.depositoId,
+        empresaId,
+        grupoId,
         tipoMovimento: input.tipoMovimento,
         dataMovimento: input.dataMovimento ?? new Date(),
         quantidade: quantidadeEntrada,
@@ -151,7 +174,7 @@ export async function registrarEntradaNaTransacao(
     });
   }
 
-  const estoque = await obterOuCriarEstoqueTravado(tx, input.produtoId, input.depositoId);
+  const estoque = await obterOuCriarEstoqueTravado(tx, input.produtoId, input.depositoId, empresaId);
 
   const novaQuantidade = estoque.quantidadeSaldo.plus(quantidadeEntrada);
   const novoValorTotal = estoque.quantidadeSaldo
@@ -174,6 +197,8 @@ export async function registrarEntradaNaTransacao(
     data: {
       produtoId: input.produtoId,
       depositoId: input.depositoId,
+      empresaId,
+      grupoId,
       tipoMovimento: input.tipoMovimento,
       dataMovimento: input.dataMovimento ?? new Date(),
       quantidade: quantidadeEntrada,
@@ -228,12 +253,16 @@ export async function registrarSaidaNaTransacao(
     throw new Error("Quantidade da saída deve ser maior que zero.");
   }
 
+  const { empresaId, grupoId } = await resolverTenantPorDeposito(tx, input.depositoId);
+
   if (!(await produtoControlaEstoque(tx, input.produtoId))) {
     const zero = new Prisma.Decimal(0);
     return tx.movimentacao.create({
       data: {
         produtoId: input.produtoId,
         depositoId: input.depositoId,
+        empresaId,
+        grupoId,
         tipoMovimento: input.tipoMovimento,
         dataMovimento: input.dataMovimento ?? new Date(),
         quantidade: quantidadeSaida,
@@ -251,7 +280,7 @@ export async function registrarSaidaNaTransacao(
     });
   }
 
-  const estoque = await obterOuCriarEstoqueTravado(tx, input.produtoId, input.depositoId);
+  const estoque = await obterOuCriarEstoqueTravado(tx, input.produtoId, input.depositoId, empresaId);
 
   if (quantidadeSaida.greaterThan(estoque.quantidadeSaldo)) {
     throw new SaldoInsuficienteError(input.produtoId, estoque.quantidadeSaldo, quantidadeSaida);
@@ -272,6 +301,8 @@ export async function registrarSaidaNaTransacao(
     data: {
       produtoId: input.produtoId,
       depositoId: input.depositoId,
+      empresaId,
+      grupoId,
       tipoMovimento: input.tipoMovimento,
       dataMovimento: input.dataMovimento ?? new Date(),
       quantidade: quantidadeSaida,
@@ -327,12 +358,24 @@ export async function registrarTransferenciaNaTransacao(
     throw new Error("Depósito de origem e destino devem ser diferentes.");
   }
 
+  // Transferência só faz sentido dentro da mesma empresa — os dois depósitos
+  // pertencem a empresas potencialmente diferentes dentro do mesmo grupo, e
+  // não há como mover estoque "de dono" via transferência.
+  const tenantOrigem = await resolverTenantPorDeposito(tx, input.depositoOrigemId);
+  const tenantDestino = await resolverTenantPorDeposito(tx, input.depositoDestinoId);
+  if (tenantOrigem.empresaId !== tenantDestino.empresaId) {
+    throw new Error("Não é possível transferir estoque entre depósitos de empresas diferentes.");
+  }
+  const { empresaId, grupoId } = tenantOrigem;
+
   if (!(await produtoControlaEstoque(tx, input.produtoId))) {
     const zero = new Prisma.Decimal(0);
     const saida = await tx.movimentacao.create({
       data: {
         produtoId: input.produtoId,
         depositoId: input.depositoOrigemId,
+        empresaId,
+        grupoId,
         tipoMovimento: TipoMovimento.transferencia_saida,
         quantidade,
         custoMedioApos: zero,
@@ -347,6 +390,8 @@ export async function registrarTransferenciaNaTransacao(
       data: {
         produtoId: input.produtoId,
         depositoId: input.depositoDestinoId,
+        empresaId,
+        grupoId,
         tipoMovimento: TipoMovimento.transferencia_entrada,
         quantidade,
         custoMedioApos: zero,
@@ -363,7 +408,7 @@ export async function registrarTransferenciaNaTransacao(
   const depositosEmOrdem = [input.depositoOrigemId, input.depositoDestinoId].sort();
   const travados = new Map<string, EstoqueTravado>();
   for (const depositoId of depositosEmOrdem) {
-    travados.set(depositoId, await obterOuCriarEstoqueTravado(tx, input.produtoId, depositoId));
+    travados.set(depositoId, await obterOuCriarEstoqueTravado(tx, input.produtoId, depositoId, empresaId));
   }
 
   const estoqueOrigem = travados.get(input.depositoOrigemId)!;
@@ -386,6 +431,8 @@ export async function registrarTransferenciaNaTransacao(
     data: {
       produtoId: input.produtoId,
       depositoId: input.depositoOrigemId,
+      empresaId,
+      grupoId,
       tipoMovimento: TipoMovimento.transferencia_saida,
       quantidade,
       custoMedioApos: custoMedioOrigem,
@@ -418,6 +465,8 @@ export async function registrarTransferenciaNaTransacao(
     data: {
       produtoId: input.produtoId,
       depositoId: input.depositoDestinoId,
+      empresaId,
+      grupoId,
       tipoMovimento: TipoMovimento.transferencia_entrada,
       quantidade,
       custoUnitario: custoMedioOrigem,
@@ -480,12 +529,16 @@ export async function estornarEntradaNaTransacao(
     throw new Error("Quantidade do estorno deve ser maior que zero.");
   }
 
+  const { empresaId, grupoId } = await resolverTenantPorDeposito(tx, input.depositoId);
+
   if (!(await produtoControlaEstoque(tx, input.produtoId))) {
     const zero = new Prisma.Decimal(0);
     return tx.movimentacao.create({
       data: {
         produtoId: input.produtoId,
         depositoId: input.depositoId,
+        empresaId,
+        grupoId,
         tipoMovimento: TipoMovimento.devolucao_fornecedor,
         quantidade,
         custoUnitario: custoUnitarioOriginal,
@@ -499,7 +552,7 @@ export async function estornarEntradaNaTransacao(
     });
   }
 
-  const estoque = await obterOuCriarEstoqueTravado(tx, input.produtoId, input.depositoId);
+  const estoque = await obterOuCriarEstoqueTravado(tx, input.produtoId, input.depositoId, empresaId);
 
   if (quantidade.greaterThan(estoque.quantidadeSaldo)) {
     throw new SaldoInsuficienteError(input.produtoId, estoque.quantidadeSaldo, quantidade);
@@ -527,6 +580,8 @@ export async function estornarEntradaNaTransacao(
     data: {
       produtoId: input.produtoId,
       depositoId: input.depositoId,
+      empresaId,
+      grupoId,
       tipoMovimento: TipoMovimento.devolucao_fornecedor,
       quantidade,
       custoUnitario: custoUnitarioOriginal,
@@ -610,6 +665,8 @@ export async function estornarLinhaDeMovimentoNaTransacao(
       data: {
         produtoId: original.produtoId,
         depositoId: original.depositoId,
+        empresaId: original.empresaId,
+        grupoId: original.grupoId,
         tipoMovimento: tipoEstorno,
         quantidade,
         custoUnitario: ehEntrada ? custoDoEstorno : undefined,
@@ -622,7 +679,12 @@ export async function estornarLinhaDeMovimentoNaTransacao(
       },
     });
   } else {
-    const estoque = await obterOuCriarEstoqueTravado(tx, original.produtoId, original.depositoId);
+    const estoque = await obterOuCriarEstoqueTravado(
+      tx,
+      original.produtoId,
+      original.depositoId,
+      original.empresaId
+    );
 
     if (ehEntrada) {
       if (quantidade.greaterThan(estoque.quantidadeSaldo)) {
@@ -645,6 +707,8 @@ export async function estornarLinhaDeMovimentoNaTransacao(
         data: {
           produtoId: original.produtoId,
           depositoId: original.depositoId,
+          empresaId: original.empresaId,
+          grupoId: original.grupoId,
           tipoMovimento: tipoEstorno,
           quantidade,
           custoUnitario: custoDoEstorno,
@@ -670,6 +734,8 @@ export async function estornarLinhaDeMovimentoNaTransacao(
         data: {
           produtoId: original.produtoId,
           depositoId: original.depositoId,
+          empresaId: original.empresaId,
+          grupoId: original.grupoId,
           tipoMovimento: tipoEstorno,
           quantidade,
           custoMedioApos: novoCustoMedio,

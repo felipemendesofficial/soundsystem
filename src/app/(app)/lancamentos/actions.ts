@@ -11,6 +11,7 @@ import {
   registrarEntradaNaTransacao,
   registrarSaidaNaTransacao,
   registrarTransferenciaNaTransacao,
+  resolverTenantPorDeposito,
   SaldoInsuficienteError,
 } from "@/lib/kardex";
 import { podeLancarMovimentacao } from "@/lib/permissions";
@@ -123,11 +124,14 @@ export async function criarLancamento(_prev: LancamentoFormState, formData: Form
     });
     if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
+    const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoOrigemId);
     const lancamento = await db.lancamento.create({
       data: {
         tipo,
         depositoOrigemId: parsed.data.depositoOrigemId,
         depositoDestinoId: parsed.data.depositoDestinoId,
+        empresaId,
+        grupoId,
         usuarioId: session.user.id,
         observacao: parsed.data.observacao || null,
         itens: { create: toItensCreate(tipo, parsed.data.itens) },
@@ -143,10 +147,13 @@ export async function criarLancamento(_prev: LancamentoFormState, formData: Form
     });
     if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
+    const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
     const lancamento = await db.lancamento.create({
       data: {
         tipo,
         depositoId: parsed.data.depositoId,
+        empresaId,
+        grupoId,
         fornecedorId: parsed.data.fornecedorId || null,
         usuarioId: session.user.id,
         observacao: parsed.data.observacao || null,
@@ -165,10 +172,13 @@ export async function criarLancamento(_prev: LancamentoFormState, formData: Form
     if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
     if (tipo === "venda" && !parsed.data.vendedorId) return { erro: "Selecione o vendedor." };
 
+    const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
     const lancamento = await db.lancamento.create({
       data: {
         tipo,
         depositoId: parsed.data.depositoId,
+        empresaId,
+        grupoId,
         clienteId: parsed.data.clienteId || null,
         vendedorId: parsed.data.vendedorId || null,
         usuarioId: session.user.id,
@@ -185,8 +195,8 @@ export async function criarLancamento(_prev: LancamentoFormState, formData: Form
   redirect(`/lancamentos/${lancamentoId}`);
 }
 
-async function exigirLancamentoAberto(id: string) {
-  const lancamento = await db.lancamento.findUnique({ where: { id } });
+async function exigirLancamentoAberto(id: string, empresaId: string) {
+  const lancamento = await db.lancamento.findFirst({ where: { id, empresaId } });
   if (!lancamento) return { erro: "Lançamento não encontrado." } as const;
   if (lancamento.status !== "aberto") return { erro: "Esse lançamento não está aberto." } as const;
   return { lancamento } as const;
@@ -200,8 +210,9 @@ export async function atualizarLancamento(
   const tipo = String(formData.get("tipo") ?? "") as TipoLancamento;
   const permissao = await exigirPermissao(tipo);
   if ("erro" in permissao) return permissao;
+  const { session } = permissao;
 
-  const atual = await exigirLancamentoAberto(id);
+  const atual = await exigirLancamentoAberto(id, session.user.empresaId!);
   if ("erro" in atual) return atual;
   if (atual.lancamento.tipo !== tipo) return { erro: "O tipo do lançamento não pode ser alterado." };
 
@@ -216,9 +227,12 @@ export async function atualizarLancamento(
       itens: formData.get("itens"),
     });
     if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoOrigemId);
     dadosHeader = {
       depositoOrigemId: parsed.data.depositoOrigemId,
       depositoDestinoId: parsed.data.depositoDestinoId,
+      empresaId,
+      grupoId,
       observacao: parsed.data.observacao || null,
     };
     itensCreate = toItensCreate(tipo, parsed.data.itens);
@@ -230,8 +244,11 @@ export async function atualizarLancamento(
       itens: formData.get("itens"),
     });
     if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+    const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
     dadosHeader = {
       depositoId: parsed.data.depositoId,
+      empresaId,
+      grupoId,
       fornecedorId: parsed.data.fornecedorId || null,
       observacao: parsed.data.observacao || null,
     };
@@ -246,8 +263,11 @@ export async function atualizarLancamento(
     });
     if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
     if (tipo === "venda" && !parsed.data.vendedorId) return { erro: "Selecione o vendedor." };
+    const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
     dadosHeader = {
       depositoId: parsed.data.depositoId,
+      empresaId,
+      grupoId,
       clienteId: parsed.data.clienteId || null,
       vendedorId: parsed.data.vendedorId || null,
       observacao: parsed.data.observacao || null,
@@ -275,7 +295,9 @@ export async function excluirLancamento(
   _prev: LancamentoFormState,
   _formData: FormData
 ): Promise<LancamentoFormState> {
-  const lancamento = await db.lancamento.findUnique({ where: { id } });
+  const session = await auth();
+  if (!session?.user) return { erro: "Não autenticado." };
+  const lancamento = await db.lancamento.findFirst({ where: { id, empresaId: session.user.empresaId! } });
   if (!lancamento) return { erro: "Lançamento não encontrado." };
   const permissao = await exigirPermissao(lancamento.tipo);
   if ("erro" in permissao) return permissao;
@@ -292,7 +314,9 @@ export async function finalizarLancamento(
   _prev: LancamentoFormState,
   _formData: FormData
 ): Promise<LancamentoFormState> {
-  const lancamento = await db.lancamento.findUnique({ where: { id } });
+  const sessaoAtual = await auth();
+  if (!sessaoAtual?.user) return { erro: "Não autenticado." };
+  const lancamento = await db.lancamento.findFirst({ where: { id, empresaId: sessaoAtual.user.empresaId! } });
   if (!lancamento) return { erro: "Lançamento não encontrado." };
   const permissao = await exigirPermissao(lancamento.tipo);
   if ("erro" in permissao) return permissao;
@@ -368,7 +392,9 @@ export async function cancelarFechamentoLancamento(
   _prev: LancamentoFormState,
   _formData: FormData
 ): Promise<LancamentoFormState> {
-  const lancamento = await db.lancamento.findUnique({ where: { id } });
+  const sessaoAtual = await auth();
+  if (!sessaoAtual?.user) return { erro: "Não autenticado." };
+  const lancamento = await db.lancamento.findFirst({ where: { id, empresaId: sessaoAtual.user.empresaId! } });
   if (!lancamento) return { erro: "Lançamento não encontrado." };
   const permissao = await exigirPermissao(lancamento.tipo);
   if ("erro" in permissao) return permissao;

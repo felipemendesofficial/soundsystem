@@ -8,6 +8,9 @@ export default auth((req) => {
   const { nextUrl } = req;
   const isLoggedIn = !!req.auth;
   const isLoginPage = nextUrl.pathname.startsWith("/login");
+  const isMaster = req.auth?.user?.perfil === "master";
+  const isAdminArea = nextUrl.pathname.startsWith("/admin");
+  const isSelecionarEmpresa = nextUrl.pathname.startsWith("/selecionar-empresa");
 
   if (!isLoggedIn && !isLoginPage) {
     const loginUrl = new URL("/login", nextUrl);
@@ -16,7 +19,22 @@ export default auth((req) => {
   }
 
   if (isLoggedIn && isLoginPage) {
+    return NextResponse.redirect(new URL(isMaster ? "/admin" : "/", nextUrl));
+  }
+
+  // Master é o admin da plataforma (sem grupo/empresa) — só acessa /admin,
+  // e é a única rota que ele acessa. Checado antes de tudo mais.
+  if (isLoggedIn && isMaster && !isAdminArea) {
+    return NextResponse.redirect(new URL("/admin", nextUrl));
+  }
+  if (isLoggedIn && !isMaster && isAdminArea) {
     return NextResponse.redirect(new URL("/", nextUrl));
+  }
+
+  // Usuário comum sem empresa ativa na sessão ainda — força a escolha antes
+  // de qualquer outra tela (exceto a própria tela de seleção).
+  if (isLoggedIn && !isMaster && !req.auth?.user?.empresaId && !isSelecionarEmpresa) {
+    return NextResponse.redirect(new URL("/selecionar-empresa", nextUrl));
   }
 
   if (isLoggedIn && nextUrl.pathname.startsWith("/usuarios") && req.auth?.user?.perfil !== "admin") {

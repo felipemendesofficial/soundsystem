@@ -31,7 +31,7 @@ export async function criarServico(
   _prev: ServicoFormState,
   formData: FormData
 ): Promise<ServicoFormState> {
-  await exigirSessao();
+  const session = await exigirSessao();
   const parsed = toData(formData);
   if (!parsed.success) {
     return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
@@ -39,7 +39,7 @@ export async function criarServico(
 
   try {
     await db.servico.create({
-      data: { nome: parsed.data.nome, precoPadrao: parsed.data.precoPadrao },
+      data: { nome: parsed.data.nome, precoPadrao: parsed.data.precoPadrao, grupoId: session.user.grupoId! },
     });
   } catch {
     return { erro: "Já existe um serviço com esse nome." };
@@ -54,17 +54,18 @@ export async function atualizarServico(
   _prev: ServicoFormState,
   formData: FormData
 ): Promise<ServicoFormState> {
-  await exigirSessao();
+  const session = await exigirSessao();
   const parsed = toData(formData);
   if (!parsed.success) {
     return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   }
 
   try {
-    await db.servico.update({
-      where: { id },
+    const { count } = await db.servico.updateMany({
+      where: { id, grupoId: session.user.grupoId! },
       data: { nome: parsed.data.nome, precoPadrao: parsed.data.precoPadrao },
     });
+    if (count === 0) return { erro: "Serviço não encontrado." };
   } catch {
     return { erro: "Já existe um serviço com esse nome." };
   }

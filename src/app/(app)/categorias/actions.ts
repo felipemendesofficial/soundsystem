@@ -23,14 +23,14 @@ export async function criarCategoria(
   _prev: CategoriaFormState,
   formData: FormData
 ): Promise<CategoriaFormState> {
-  await exigirSessao();
+  const session = await exigirSessao();
   const parsed = schema.safeParse({ nome: formData.get("nome") });
   if (!parsed.success) {
     return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   }
 
   try {
-    await db.categoria.create({ data: { nome: parsed.data.nome } });
+    await db.categoria.create({ data: { nome: parsed.data.nome, grupoId: session.user.grupoId! } });
   } catch {
     return { erro: "Já existe uma categoria com esse nome." };
   }
@@ -44,14 +44,18 @@ export async function atualizarCategoria(
   _prev: CategoriaFormState,
   formData: FormData
 ): Promise<CategoriaFormState> {
-  await exigirSessao();
+  const session = await exigirSessao();
   const parsed = schema.safeParse({ nome: formData.get("nome") });
   if (!parsed.success) {
     return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   }
 
   try {
-    await db.categoria.update({ where: { id }, data: { nome: parsed.data.nome } });
+    const { count } = await db.categoria.updateMany({
+      where: { id, grupoId: session.user.grupoId! },
+      data: { nome: parsed.data.nome },
+    });
+    if (count === 0) return { erro: "Categoria não encontrada." };
   } catch {
     return { erro: "Já existe uma categoria com esse nome." };
   }

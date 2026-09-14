@@ -1,11 +1,14 @@
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { criarProduto } from "../actions";
 import { ProdutoForm } from "../produto-form";
 
 export default async function NovoProdutoPage() {
+  const session = await auth();
+  const grupoId = session!.user.grupoId!;
   const [categorias, unidadesMedida] = await Promise.all([
-    db.categoria.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-    db.unidadeMedida.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
+    db.categoria.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
+    db.unidadeMedida.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
   ]);
 
   return (

@@ -37,7 +37,7 @@ export async function criarFornecedor(
   _prev: FornecedorFormState,
   formData: FormData
 ): Promise<FornecedorFormState> {
-  await exigirSessao();
+  const session = await exigirSessao();
   const parsed = toData(formData);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
@@ -48,6 +48,7 @@ export async function criarFornecedor(
       documento: parsed.data.documento || null,
       telefone: parsed.data.telefone || null,
       email: parsed.data.email || null,
+      grupoId: session.user.grupoId!,
     },
   });
 
@@ -60,12 +61,12 @@ export async function atualizarFornecedor(
   _prev: FornecedorFormState,
   formData: FormData
 ): Promise<FornecedorFormState> {
-  await exigirSessao();
+  const session = await exigirSessao();
   const parsed = toData(formData);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
-  await db.fornecedor.update({
-    where: { id },
+  const { count } = await db.fornecedor.updateMany({
+    where: { id, grupoId: session.user.grupoId! },
     data: {
       nome: parsed.data.nome,
       tipoPessoa: parsed.data.tipoPessoa,
@@ -74,6 +75,7 @@ export async function atualizarFornecedor(
       email: parsed.data.email || null,
     },
   });
+  if (count === 0) return { erro: "Fornecedor não encontrado." };
 
   revalidatePath("/fornecedores");
   redirect("/fornecedores");

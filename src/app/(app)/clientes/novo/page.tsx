@@ -1,9 +1,14 @@
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { criarCliente } from "../actions";
 import { ClienteForm } from "../cliente-form";
 
 export default async function NovoClientePage() {
-  const tabelasPreco = await db.tabelaPreco.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } });
+  const session = await auth();
+  const tabelasPreco = await db.tabelaPreco.findMany({
+    where: { ativo: true, grupoId: session!.user.grupoId! },
+    orderBy: { nome: "asc" },
+  });
 
   return (
     <div className="space-y-6">

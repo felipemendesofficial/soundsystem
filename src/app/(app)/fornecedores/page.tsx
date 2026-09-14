@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { FornecedoresLista, type ItemFornecedor } from "@/components/fornecedores-lista";
 
 export default async function FornecedoresPage() {
-  const fornecedores = await db.fornecedor.findMany({ orderBy: { nome: "asc" } });
+  const session = await auth();
+  const fornecedores = await db.fornecedor.findMany({
+    where: { grupoId: session!.user.grupoId! },
+    orderBy: { nome: "asc" },
+  });
 
   const itensLista: ItemFornecedor[] = fornecedores.map((f) => ({
     id: f.id,

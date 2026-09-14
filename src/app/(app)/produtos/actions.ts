@@ -40,7 +40,7 @@ function toData(formData: FormData) {
 }
 
 export async function criarProduto(_prev: ProdutoFormState, formData: FormData): Promise<ProdutoFormState> {
-  await exigirSessao();
+  const session = await exigirSessao();
   const parsed = toData(formData);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
@@ -56,6 +56,7 @@ export async function criarProduto(_prev: ProdutoFormState, formData: FormData):
         unidadeMedidaId: parsed.data.unidadeMedidaId,
         fotoUrl: parsed.data.fotoUrl || null,
         controlaEstoque: parsed.data.controlaEstoque === "on",
+        grupoId: session.user.grupoId!,
       },
     });
   } catch {
@@ -71,13 +72,13 @@ export async function atualizarProduto(
   _prev: ProdutoFormState,
   formData: FormData
 ): Promise<ProdutoFormState> {
-  await exigirSessao();
+  const session = await exigirSessao();
   const parsed = toData(formData);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
   try {
-    await db.produto.update({
-      where: { id },
+    const { count } = await db.produto.updateMany({
+      where: { id, grupoId: session.user.grupoId! },
       data: {
         sku: parsed.data.sku,
         nome: parsed.data.nome,
@@ -89,6 +90,7 @@ export async function atualizarProduto(
         controlaEstoque: parsed.data.controlaEstoque === "on",
       },
     });
+    if (count === 0) return { erro: "Produto não encontrado." };
   } catch {
     return { erro: "Já existe um produto com esse SKU." };
   }

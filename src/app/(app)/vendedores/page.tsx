@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { VendedoresLista, type ItemVendedor } from "@/components/vendedores-lista";
@@ -11,7 +12,11 @@ function formatarComissao(vendedor: { recebeComissao: boolean; tipoComissao: str
 }
 
 export default async function VendedoresPage() {
-  const vendedores = await db.vendedor.findMany({ orderBy: { nome: "asc" } });
+  const session = await auth();
+  const vendedores = await db.vendedor.findMany({
+    where: { grupoId: session!.user.grupoId! },
+    orderBy: { nome: "asc" },
+  });
 
   const itensLista: ItemVendedor[] = vendedores.map((v) => ({
     id: v.id,

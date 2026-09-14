@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { CategoriasLista } from "@/components/categorias-lista";
 
 export default async function CategoriasPage() {
-  const categorias = await db.categoria.findMany({ orderBy: { nome: "asc" } });
+  const session = await auth();
+  const categorias = await db.categoria.findMany({
+    where: { grupoId: session!.user.grupoId! },
+    orderBy: { nome: "asc" },
+  });
 
   return (
     <div className="space-y-6">

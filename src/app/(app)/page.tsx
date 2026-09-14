@@ -20,14 +20,18 @@ function maiorPor<T>(itens: T[], valor: (item: T) => number): T | null {
   );
 }
 
-async function obterVisaoGeralVendas() {
+async function obterVisaoGeralVendas(empresaId: string) {
   const agora = new Date();
   const inicioMesAtual = new Date(agora.getFullYear(), agora.getMonth(), 1);
   const inicioMesAnterior = new Date(agora.getFullYear(), agora.getMonth() - 1, 1);
 
   const [movimentosAtuais, movimentosAnteriores] = await Promise.all([
     db.movimentacao.findMany({
-      where: { tipoMovimento: { in: ["venda", "os_saida"] }, dataMovimento: { gte: inicioMesAtual } },
+      where: {
+        empresaId,
+        tipoMovimento: { in: ["venda", "os_saida"] },
+        dataMovimento: { gte: inicioMesAtual },
+      },
       select: {
         produtoId: true,
         quantidade: true,
@@ -41,6 +45,7 @@ async function obterVisaoGeralVendas() {
     }),
     db.movimentacao.findMany({
       where: {
+        empresaId,
         tipoMovimento: { in: ["venda", "os_saida"] },
         dataMovimento: { gte: inicioMesAnterior, lt: inicioMesAtual },
       },
@@ -110,20 +115,23 @@ async function obterVisaoGeralVendas() {
 export default async function HomePage() {
   const session = await auth();
   const perfil = session!.user.perfil;
+  const grupoId = session!.user.grupoId!;
+  const empresaId = session!.user.empresaId!;
 
-  const totalProdutos = await db.produto.count({ where: { ativo: true } });
+  const totalProdutos = await db.produto.count({ where: { ativo: true, grupoId } });
 
   let valorTotalEstoque: string | null = null;
   let visaoGeralVendas: Awaited<ReturnType<typeof obterVisaoGeralVendas>> | null = null;
   if (podeVerCusto(perfil)) {
     const agregado = await db.produtoEstoque.aggregate({
+      where: { empresaId },
       _sum: { valorTotalSaldo: true },
     });
     valorTotalEstoque = Number(agregado._sum.valorTotalSaldo ?? 0).toLocaleString("pt-BR", {
       style: "currency",
       currency: "BRL",
     });
-    visaoGeralVendas = await obterVisaoGeralVendas();
+    visaoGeralVendas = await obterVisaoGeralVendas(empresaId);
   }
 
   const stats = [
@@ -167,12 +175,7 @@ export default async function HomePage() {
 
   return (
     <div>
-      <div>
-        <h1 className="font-heading text-[30px] font-extrabold uppercase leading-tight">
-          Olá, {session!.user.name}
-        </h1>
-        <p className="mt-0.5 text-[13.5px] text-muted-foreground">Visão geral do estoque</p>
-      </div>
+      <h1 className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-faint">Visão geral do estoque</h1>
 
       <div className="-mx-[18px] mt-[18px] flex gap-2.5 overflow-x-auto px-[18px] pb-1 [scrollbar-width:none]">
         {stats.map((stat) => (

@@ -5,11 +5,13 @@ import { OrcamentoForm } from "@/components/orcamento-form";
 
 export default async function NovoOrcamentoPage() {
   const session = await auth();
+  const grupoId = session!.user.grupoId!;
+  const empresaId = session!.user.empresaId!;
 
   const [depositos, fornecedores, produtos] = await Promise.all([
-    db.deposito.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-    db.fornecedor.findMany({ orderBy: { nome: "asc" } }),
-    db.produto.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
+    db.deposito.findMany({ where: { ativo: true, empresaId }, orderBy: { nome: "asc" } }),
+    db.fornecedor.findMany({ where: { grupoId }, orderBy: { nome: "asc" } }),
+    db.produto.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
   ]);
 
   return (

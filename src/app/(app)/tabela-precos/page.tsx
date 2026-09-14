@@ -1,10 +1,13 @@
 import Link from "next/link";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { TabelasPrecoLista, type ItemTabelaPrecoLista } from "@/components/tabelas-preco-lista";
 
 export default async function TabelaPrecosPage() {
+  const session = await auth();
   const tabelas = await db.tabelaPreco.findMany({
+    where: { grupoId: session!.user.grupoId! },
     include: { _count: { select: { itens: true } } },
     orderBy: { nome: "asc" },
   });

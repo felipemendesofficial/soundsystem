@@ -3,21 +3,54 @@ import bcrypt from "bcryptjs";
 import { db } from "../src/lib/db";
 
 async function main() {
+  const grupo = await db.grupoEmpresarial.upsert({
+    where: { id: "00000000-0000-0000-0000-000000000010" },
+    update: {},
+    create: {
+      id: "00000000-0000-0000-0000-000000000010",
+      nome: "Grupo Teste",
+    },
+  });
+
+  const empresa = await db.empresa.upsert({
+    where: { id: "00000000-0000-0000-0000-000000000011" },
+    update: {},
+    create: {
+      id: "00000000-0000-0000-0000-000000000011",
+      grupoId: grupo.id,
+      nome: "Empresa Teste",
+    },
+  });
+
   const deposito = await db.deposito.upsert({
     where: { id: "00000000-0000-0000-0000-000000000001" },
     update: {},
     create: {
       id: "00000000-0000-0000-0000-000000000001",
+      empresaId: empresa.id,
       nome: "Loja Principal",
       endereco: null,
     },
   });
 
+  const senhaHashMaster = await bcrypt.hash("master123", 10);
   const senhaHashAdmin = await bcrypt.hash("admin123", 10);
   const senhaHashEstoquista = await bcrypt.hash("estoque123", 10);
   const senhaHashVendedor = await bcrypt.hash("venda123", 10);
 
+  // Master: usuário de plataforma, sem grupo — cria Grupos/Empresas via /admin.
   await db.usuario.upsert({
+    where: { email: "master@exemplo.com" },
+    update: {},
+    create: {
+      nome: "Master",
+      email: "master@exemplo.com",
+      senhaHash: senhaHashMaster,
+      perfil: "master",
+    },
+  });
+
+  const admin = await db.usuario.upsert({
     where: { email: "admin@exemplo.com" },
     update: {},
     create: {
@@ -25,11 +58,11 @@ async function main() {
       email: "admin@exemplo.com",
       senhaHash: senhaHashAdmin,
       perfil: "admin",
-      depositoPadraoId: deposito.id,
+      grupoId: grupo.id,
     },
   });
 
-  await db.usuario.upsert({
+  const estoquista = await db.usuario.upsert({
     where: { email: "estoquista@exemplo.com" },
     update: {},
     create: {
@@ -37,11 +70,11 @@ async function main() {
       email: "estoquista@exemplo.com",
       senhaHash: senhaHashEstoquista,
       perfil: "estoquista",
-      depositoPadraoId: deposito.id,
+      grupoId: grupo.id,
     },
   });
 
-  await db.usuario.upsert({
+  const vendedor = await db.usuario.upsert({
     where: { email: "vendedor@exemplo.com" },
     update: {},
     create: {
@@ -49,11 +82,25 @@ async function main() {
       email: "vendedor@exemplo.com",
       senhaHash: senhaHashVendedor,
       perfil: "vendedor",
-      depositoPadraoId: deposito.id,
+      grupoId: grupo.id,
     },
   });
 
+  // Acesso à Empresa Teste (com depósito padrão) pros 3 usuários não-master.
+  for (const usuario of [admin, estoquista, vendedor]) {
+    await db.usuarioEmpresa.upsert({
+      where: { usuarioId_empresaId: { usuarioId: usuario.id, empresaId: empresa.id } },
+      update: {},
+      create: {
+        usuarioId: usuario.id,
+        empresaId: empresa.id,
+        depositoPadraoId: deposito.id,
+      },
+    });
+  }
+
   console.log("Seed concluído.");
+  console.log("Login master:     master@exemplo.com / master123");
   console.log("Login admin:      admin@exemplo.com / admin123");
   console.log("Login estoquista: estoquista@exemplo.com / estoque123");
   console.log("Login vendedor:   vendedor@exemplo.com / venda123");

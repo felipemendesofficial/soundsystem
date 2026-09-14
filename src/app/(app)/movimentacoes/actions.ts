@@ -26,13 +26,13 @@ export async function estornarMovimento(
 ): Promise<MovimentacaoFormState> {
   const session = await auth();
   if (!session?.user) return { erro: "Não autenticado." };
-  const { perfil, id: usuarioId } = session.user;
+  const { perfil, id: usuarioId, empresaId } = session.user;
 
   if (!podeLancarMovimentacao(perfil)) {
     return { erro: "Seu perfil não pode estornar movimentações." };
   }
 
-  const movimento = await db.movimentacao.findUnique({ where: { id } });
+  const movimento = await db.movimentacao.findFirst({ where: { id, empresaId: empresaId! } });
   if (!movimento) return { erro: "Movimento não encontrado." };
   if (perfil === "vendedor" && movimento.tipoMovimento !== "venda") {
     return { erro: "Seu perfil só pode estornar vendas." };

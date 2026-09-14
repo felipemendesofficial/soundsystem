@@ -4,7 +4,7 @@ import type { Perfil } from "@/generated/prisma/client";
 declare module "next-auth" {
   interface User {
     perfil?: Perfil;
-    depositoPadraoId?: string | null;
+    grupoId?: string | null;
   }
   interface Session {
     user: {
@@ -12,7 +12,9 @@ declare module "next-auth" {
       name: string;
       email: string;
       perfil: Perfil;
-      depositoPadraoId: string | null;
+      grupoId: string | null; // null somente para perfil = master
+      empresaId: string | null; // null até escolher no /selecionar-empresa (ou sempre null pra master)
+      depositoPadraoId: string | null; // por (usuário, empresa) — ver UsuarioEmpresa
     };
   }
 }
@@ -31,17 +33,27 @@ export const authConfig = {
   trustHost: true,
   providers: [],
   callbacks: {
-    jwt({ token, user }) {
+    jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id as string;
         token.perfil = user.perfil as Perfil;
-        token.depositoPadraoId = user.depositoPadraoId ?? null;
+        token.grupoId = user.grupoId ?? null;
+        token.empresaId = null;
+        token.depositoPadraoId = null;
+      }
+      // Disparado por `unstable_update` (ver src/app/selecionar-empresa/actions.ts) —
+      // é assim que a empresa ativa entra na sessão depois do login inicial.
+      if (trigger === "update" && session?.user) {
+        if ("empresaId" in session.user) token.empresaId = session.user.empresaId;
+        if ("depositoPadraoId" in session.user) token.depositoPadraoId = session.user.depositoPadraoId;
       }
       return token;
     },
     session({ session, token }) {
       session.user.id = token.id as string;
       session.user.perfil = token.perfil as Perfil;
+      session.user.grupoId = token.grupoId as string | null;
+      session.user.empresaId = token.empresaId as string | null;
       session.user.depositoPadraoId = token.depositoPadraoId as string | null;
       return session;
     },

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { OrcamentoForm } from "@/components/orcamento-form";
@@ -21,19 +22,22 @@ function formatarPercentual(valor: number) {
 
 export default async function DetalheOrcamentoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const session = await auth();
+  const grupoId = session!.user.grupoId!;
+  const empresaId = session!.user.empresaId!;
 
   const [orcamento, depositos, fornecedores, produtos] = await Promise.all([
-    db.orcamento.findUnique({
-      where: { id },
+    db.orcamento.findFirst({
+      where: { id, empresaId },
       include: {
         deposito: true,
         fornecedor: true,
         itens: { include: { produto: true } },
       },
     }),
-    db.deposito.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-    db.fornecedor.findMany({ orderBy: { nome: "asc" } }),
-    db.produto.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
+    db.deposito.findMany({ where: { ativo: true, empresaId }, orderBy: { nome: "asc" } }),
+    db.fornecedor.findMany({ where: { grupoId }, orderBy: { nome: "asc" } }),
+    db.produto.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
   ]);
   if (!orcamento) notFound();
 

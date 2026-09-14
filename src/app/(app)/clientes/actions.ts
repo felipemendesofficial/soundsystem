@@ -34,7 +34,7 @@ function toData(formData: FormData) {
 }
 
 export async function criarCliente(_prev: ClienteFormState, formData: FormData): Promise<ClienteFormState> {
-  await exigirSessao();
+  const session = await exigirSessao();
   const parsed = toData(formData);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
@@ -45,6 +45,7 @@ export async function criarCliente(_prev: ClienteFormState, formData: FormData):
       telefone: parsed.data.telefone || null,
       email: parsed.data.email || null,
       tabelaPrecoPadraoId: parsed.data.tabelaPrecoPadraoId || null,
+      grupoId: session.user.grupoId!,
     },
   });
 
@@ -57,12 +58,12 @@ export async function atualizarCliente(
   _prev: ClienteFormState,
   formData: FormData
 ): Promise<ClienteFormState> {
-  await exigirSessao();
+  const session = await exigirSessao();
   const parsed = toData(formData);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
-  await db.cliente.update({
-    where: { id },
+  const { count } = await db.cliente.updateMany({
+    where: { id, grupoId: session.user.grupoId! },
     data: {
       nome: parsed.data.nome,
       tipoCliente: parsed.data.tipoCliente,
@@ -71,6 +72,7 @@ export async function atualizarCliente(
       tabelaPrecoPadraoId: parsed.data.tabelaPrecoPadraoId || null,
     },
   });
+  if (count === 0) return { erro: "Cliente não encontrado." };
 
   revalidatePath("/clientes");
   redirect("/clientes");

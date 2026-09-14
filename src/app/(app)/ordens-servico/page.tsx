@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { StatusOS } from "@/generated/prisma/client";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ export default async function OrdensServicoPage({
   searchParams: Promise<{ status?: string; periodo?: string; dataInicio?: string; dataFim?: string }>;
 }) {
   const { status, periodo, dataInicio, dataFim } = await searchParams;
+  const session = await auth();
 
   const hoje = new Date();
   const padraoInicio = primeiroDiaDoMesISO(hoje);
@@ -36,6 +38,7 @@ export default async function OrdensServicoPage({
 
   const ordens = await db.ordemServico.findMany({
     where: {
+      empresaId: session!.user.empresaId!,
       ...(status ? { status: status as StatusOS } : {}),
       ...(filtroPeriodo ? { criadaEm: filtroPeriodo } : {}),
     },

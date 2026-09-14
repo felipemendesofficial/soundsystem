@@ -1,12 +1,14 @@
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { obterCustoMedioCombinadoPorProduto } from "@/lib/tabela-preco";
 import { criarTabelaPreco } from "../actions";
 import { TabelaPrecoForm, type ProdutoPreco } from "@/components/tabela-preco-form";
 
 export default async function NovaTabelaPrecoPage() {
+  const session = await auth();
   const [produtos, custosMedios] = await Promise.all([
-    db.produto.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-    obterCustoMedioCombinadoPorProduto(),
+    db.produto.findMany({ where: { ativo: true, grupoId: session!.user.grupoId! }, orderBy: { nome: "asc" } }),
+    obterCustoMedioCombinadoPorProduto(session!.user.empresaId!),
   ]);
 
   const produtosPreco: ProdutoPreco[] = produtos.map((p) => ({

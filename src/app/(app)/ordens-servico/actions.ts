@@ -6,7 +6,12 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { podeLancarMovimentacao } from "@/lib/permissions";
-import { mensagemSaldoInsuficiente, registrarSaidaNaTransacao, SaldoInsuficienteError } from "@/lib/kardex";
+import {
+  mensagemSaldoInsuficiente,
+  registrarSaidaNaTransacao,
+  resolverTenantPorDeposito,
+  SaldoInsuficienteError,
+} from "@/lib/kardex";
 import { normalizarTexto } from "@/lib/texto";
 
 export type OrdemServicoFormState = { erro?: string };
@@ -71,10 +76,13 @@ export async function criarOrdemServico(
   const parsed = toData(formData);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
+  const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
   const os = await db.ordemServico.create({
     data: {
       clienteId: parsed.data.clienteId,
       depositoId: parsed.data.depositoId,
+      empresaId,
+      grupoId,
       vendedorId: parsed.data.vendedorId,
       usuarioId: permissao.session.user.id,
       observacao: parsed.data.observacao || null,
@@ -103,7 +111,7 @@ export async function atualizarOrdemServico(
   const permissao = await exigirPermissao();
   if ("erro" in permissao) return permissao;
 
-  const osAtual = await db.ordemServico.findUnique({ where: { id } });
+  const osAtual = await db.ordemServico.findFirst({ where: { id, empresaId: permissao.session.user.empresaId! } });
   if (!osAtual) return { erro: "Ordem de Serviço não encontrada." };
   if (osAtual.status === "concluida" || osAtual.status === "cancelada") {
     return { erro: "Essa Ordem de Serviço não pode mais ser editada." };
@@ -112,6 +120,7 @@ export async function atualizarOrdemServico(
   const parsed = toData(formData);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
+  const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
   await db.$transaction(async (tx) => {
     await tx.itemOrdemServicoProduto.deleteMany({ where: { ordemServicoId: id } });
     await tx.itemOrdemServicoServico.deleteMany({ where: { ordemServicoId: id } });
@@ -120,6 +129,8 @@ export async function atualizarOrdemServico(
       data: {
         clienteId: parsed.data.clienteId,
         depositoId: parsed.data.depositoId,
+        empresaId,
+        grupoId,
         vendedorId: parsed.data.vendedorId,
         observacao: parsed.data.observacao || null,
         itensProduto: {
@@ -148,7 +159,7 @@ export async function iniciarOrdemServico(
   const permissao = await exigirPermissao();
   if ("erro" in permissao) return permissao;
 
-  const os = await db.ordemServico.findUnique({ where: { id } });
+  const os = await db.ordemServico.findFirst({ where: { id, empresaId: permissao.session.user.empresaId! } });
   if (!os) return { erro: "Ordem de Serviço não encontrada." };
   if (os.status !== "aberta") return { erro: "Só é possível iniciar uma OS aberta." };
 
@@ -167,7 +178,7 @@ export async function cancelarOrdemServico(
   const permissao = await exigirPermissao();
   if ("erro" in permissao) return permissao;
 
-  const os = await db.ordemServico.findUnique({ where: { id } });
+  const os = await db.ordemServico.findFirst({ where: { id, empresaId: permissao.session.user.empresaId! } });
   if (!os) return { erro: "Ordem de Serviço não encontrada." };
   if (os.status === "concluida" || os.status === "cancelada") {
     return { erro: "Essa Ordem de Serviço não pode mais ser cancelada." };
@@ -191,8 +202,8 @@ export async function concluirOrdemServico(
 
   try {
     await db.$transaction(async (tx) => {
-      const os = await tx.ordemServico.findUnique({
-        where: { id },
+      const os = await tx.ordemServico.findFirst({
+        where: { id, empresaId: session.user.empresaId! },
         include: { itensProduto: true },
       });
       if (!os) throw new Error("Ordem de Serviço não encontrada.");

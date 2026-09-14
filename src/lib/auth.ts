@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { authConfig } from "@/lib/auth.config";
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+export const { handlers, signIn, signOut, auth, unstable_update } = NextAuth({
   ...authConfig,
   providers: [
     Credentials({
@@ -28,7 +28,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           name: usuario.nome,
           email: usuario.email,
           perfil: usuario.perfil,
-          depositoPadraoId: usuario.depositoPadraoId,
+          grupoId: usuario.grupoId,
         };
       },
     }),

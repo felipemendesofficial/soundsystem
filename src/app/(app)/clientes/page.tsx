@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { ClientesLista, type ItemCliente } from "@/components/clientes-lista";
 
 export default async function ClientesPage() {
-  const clientes = await db.cliente.findMany({ orderBy: { nome: "asc" } });
+  const session = await auth();
+  const clientes = await db.cliente.findMany({
+    where: { grupoId: session!.user.grupoId! },
+    orderBy: { nome: "asc" },
+  });
 
   const itensLista: ItemCliente[] = clientes.map((c) => ({
     id: c.id,

@@ -1,11 +1,13 @@
 import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { atualizarServico } from "../actions";
 import { ServicoForm } from "../servico-form";
 
 export default async function EditarServicoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const servico = await db.servico.findUnique({ where: { id } });
+  const session = await auth();
+  const servico = await db.servico.findFirst({ where: { id, grupoId: session!.user.grupoId! } });
   if (!servico) notFound();
 
   const action = atualizarServico.bind(null, id);

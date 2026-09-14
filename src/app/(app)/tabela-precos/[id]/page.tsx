@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { obterCustoMedioCombinadoPorProduto } from "@/lib/tabela-preco";
 import { atualizarTabelaPreco } from "../actions";
@@ -6,11 +7,14 @@ import { TabelaPrecoForm, type ProdutoPreco } from "@/components/tabela-preco-fo
 
 export default async function EditarTabelaPrecoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const session = await auth();
+  const grupoId = session!.user.grupoId!;
+  const empresaId = session!.user.empresaId!;
 
   const [tabela, produtos, custosMedios] = await Promise.all([
-    db.tabelaPreco.findUnique({ where: { id }, include: { itens: true } }),
-    db.produto.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-    obterCustoMedioCombinadoPorProduto(),
+    db.tabelaPreco.findFirst({ where: { id, grupoId }, include: { itens: true } }),
+    db.produto.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
+    obterCustoMedioCombinadoPorProduto(empresaId),
   ]);
   if (!tabela) notFound();
 

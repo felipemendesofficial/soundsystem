@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { StatusLancamento } from "@/generated/prisma/client";
 import { Button } from "@/components/ui/button";
@@ -45,11 +46,13 @@ export default async function LancamentosPage({
   searchParams: Promise<{ status?: string; data?: string }>;
 }) {
   const { status, data } = await searchParams;
+  const session = await auth();
   const hojeISO = paraISO(new Date());
   const dataFiltro = data === "todos" ? null : (data ?? hojeISO);
 
   const lancamentos = await db.lancamento.findMany({
     where: {
+      empresaId: session!.user.empresaId!,
       ...(status ? { status: status as StatusLancamento } : {}),
       ...(dataFiltro ? { criadoEm: intervaloDoDia(dataFiltro) } : {}),
     },

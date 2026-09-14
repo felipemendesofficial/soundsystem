@@ -11,17 +11,31 @@ export default async function EditarUsuarioPage({ params }: { params: Promise<{ 
 
   const { id } = await params;
   const [usuario, depositos] = await Promise.all([
-    db.usuario.findUnique({ where: { id } }),
-    db.deposito.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
+    db.usuario.findFirst({
+      where: { id, grupoId: session.user.grupoId! },
+      include: { empresasAcesso: { where: { empresaId: session.user.empresaId! } } },
+    }),
+    db.deposito.findMany({
+      where: { ativo: true, empresaId: session.user.empresaId! },
+      orderBy: { nome: "asc" },
+    }),
   ]);
   if (!usuario) notFound();
+
+  const defaultValues = {
+    nome: usuario.nome,
+    email: usuario.email,
+    perfil: usuario.perfil,
+    depositoPadraoId: usuario.empresasAcesso[0]?.depositoPadraoId ?? null,
+    ativo: usuario.ativo,
+  };
 
   const action = atualizarUsuario.bind(null, id);
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Editar Usuário</h1>
-      <UsuarioForm action={action} depositos={depositos} defaultValues={usuario} ehEdicao />
+      <UsuarioForm action={action} depositos={depositos} defaultValues={defaultValues} ehEdicao />
     </div>
   );
 }

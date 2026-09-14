@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { obterUltimosPrecosVenda } from "@/lib/tabela-preco";
 import { Badge } from "@/components/ui/badge";
@@ -24,11 +25,14 @@ function formatarMoeda(valor: unknown) {
 
 export default async function DetalheOrdemServicoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const session = await auth();
+  const grupoId = session!.user.grupoId!;
+  const empresaId = session!.user.empresaId!;
 
   const [os, clientes, depositos, vendedores, produtos, servicos, tabelasPreco, itensTabelaPreco, ultimosPrecos] =
     await Promise.all([
-      db.ordemServico.findUnique({
-        where: { id },
+      db.ordemServico.findFirst({
+        where: { id, empresaId },
         include: {
           cliente: true,
           deposito: true,
@@ -37,14 +41,14 @@ export default async function DetalheOrdemServicoPage({ params }: { params: Prom
           itensServico: { include: { servico: true } },
         },
       }),
-      db.cliente.findMany({ orderBy: { nome: "asc" } }),
-      db.deposito.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-      db.vendedor.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-      db.produto.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-      db.servico.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-      db.tabelaPreco.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-      db.itemTabelaPreco.findMany(),
-      obterUltimosPrecosVenda(),
+      db.cliente.findMany({ where: { grupoId }, orderBy: { nome: "asc" } }),
+      db.deposito.findMany({ where: { ativo: true, empresaId }, orderBy: { nome: "asc" } }),
+      db.vendedor.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
+      db.produto.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
+      db.servico.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
+      db.tabelaPreco.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
+      db.itemTabelaPreco.findMany({ where: { tabelaPreco: { grupoId } } }),
+      obterUltimosPrecosVenda(empresaId),
     ]);
   if (!os) notFound();
 

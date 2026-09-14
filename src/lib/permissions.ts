@@ -1,5 +1,13 @@
 import type { Perfil } from "@/generated/prisma/client";
 
+/**
+ * Master é o admin da plataforma (sem grupo) — cria Grupos/Empresas na área
+ * /admin. Nenhum outro perfil acessa essa área, e master não acessa mais nada.
+ */
+export function podeGerenciarPlataforma(perfil: Perfil): boolean {
+  return perfil === "master";
+}
+
 export function podeVerCusto(perfil: Perfil): boolean {
   return perfil === "admin" || perfil === "estoquista";
 }

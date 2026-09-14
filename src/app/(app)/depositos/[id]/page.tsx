@@ -1,11 +1,13 @@
 import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { atualizarDeposito } from "../actions";
 import { DepositoForm } from "../deposito-form";
 
 export default async function EditarDepositoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const deposito = await db.deposito.findUnique({ where: { id } });
+  const session = await auth();
+  const deposito = await db.deposito.findFirst({ where: { id, empresaId: session!.user.empresaId! } });
   if (!deposito) notFound();
 
   const action = atualizarDeposito.bind(null, id);

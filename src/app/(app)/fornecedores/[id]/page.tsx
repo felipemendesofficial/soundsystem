@@ -1,11 +1,13 @@
 import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { atualizarFornecedor } from "../actions";
 import { FornecedorForm } from "../fornecedor-form";
 
 export default async function EditarFornecedorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const fornecedor = await db.fornecedor.findUnique({ where: { id } });
+  const session = await auth();
+  const fornecedor = await db.fornecedor.findFirst({ where: { id, grupoId: session!.user.grupoId! } });
   if (!fornecedor) notFound();
 
   const action = atualizarFornecedor.bind(null, id);

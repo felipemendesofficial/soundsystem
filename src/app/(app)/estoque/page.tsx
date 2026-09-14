@@ -21,12 +21,13 @@ export default async function EstoquePage({
 }) {
   const { depositoId } = await searchParams;
   const session = await auth();
+  const empresaId = session!.user.empresaId!;
   const mostrarCusto = podeVerCusto(session!.user.perfil);
 
   const [depositos, itens] = await Promise.all([
-    db.deposito.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
+    db.deposito.findMany({ where: { ativo: true, empresaId }, orderBy: { nome: "asc" } }),
     db.produtoEstoque.findMany({
-      where: { ...(depositoId ? { depositoId } : {}), quantidadeSaldo: { gt: 0 } },
+      where: { empresaId, ...(depositoId ? { depositoId } : {}), quantidadeSaldo: { gt: 0 } },
       include: { produto: true, deposito: true },
       orderBy: { produto: { nome: "asc" } },
     }),

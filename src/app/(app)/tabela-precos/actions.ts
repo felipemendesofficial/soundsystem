@@ -68,6 +68,7 @@ export async function criarTabelaPreco(
       data: {
         nome: parsed.data.nome,
         ativo: parsed.data.ativo === "on",
+        grupoId: permissao.session.user.grupoId!,
         itens: {
           create: parsed.data.itens.map((i) => ({ produtoId: i.produtoId, preco: i.preco })),
         },
@@ -94,6 +95,12 @@ export async function atualizarTabelaPreco(
 
   try {
     await db.$transaction(async (tx) => {
+      const tabela = await tx.tabelaPreco.findFirst({
+        where: { id, grupoId: permissao.session.user.grupoId! },
+        select: { id: true },
+      });
+      if (!tabela) throw new Error("NAO_ENCONTRADA");
+
       await tx.itemTabelaPreco.deleteMany({ where: { tabelaPrecoId: id } });
       await tx.tabelaPreco.update({
         where: { id },
@@ -106,7 +113,8 @@ export async function atualizarTabelaPreco(
         },
       });
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof Error && e.message === "NAO_ENCONTRADA") return { erro: "Tabela de preço não encontrada." };
     return { erro: "Já existe uma tabela de preço com esse nome." };
   }
 

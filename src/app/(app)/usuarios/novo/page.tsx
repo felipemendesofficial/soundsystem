@@ -9,7 +9,10 @@ export default async function NovoUsuarioPage() {
   const session = await auth();
   if (!session?.user || !podeGerenciarUsuarios(session.user.perfil)) redirect("/");
 
-  const depositos = await db.deposito.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } });
+  const depositos = await db.deposito.findMany({
+    where: { ativo: true, empresaId: session.user.empresaId! },
+    orderBy: { nome: "asc" },
+  });
 
   return (
     <div className="space-y-6">

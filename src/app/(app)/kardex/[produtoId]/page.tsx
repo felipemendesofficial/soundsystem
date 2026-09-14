@@ -87,14 +87,17 @@ export default async function KardexPage({
 
   const session = await auth();
   const perfil = session!.user.perfil;
+  const grupoId = session!.user.grupoId!;
+  const empresaId = session!.user.empresaId!;
   const mostrarCusto = podeVerCusto(perfil);
 
   const [produto, depositos, movimentacoes] = await Promise.all([
-    db.produto.findUnique({ where: { id: produtoId }, include: { categoria: true } }),
-    db.deposito.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
+    db.produto.findFirst({ where: { id: produtoId, grupoId }, include: { categoria: true } }),
+    db.deposito.findMany({ where: { ativo: true, empresaId }, orderBy: { nome: "asc" } }),
     db.movimentacao.findMany({
       where: {
         produtoId,
+        empresaId,
         ...(depositoId ? { depositoId } : {}),
         ...(filtroPeriodo ? { dataMovimento: filtroPeriodo } : {}),
       },

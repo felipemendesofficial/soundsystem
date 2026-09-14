@@ -11,6 +11,7 @@ datasource db {
 }
 
 enum Perfil {
+  master
   admin
   estoquista
   vendedor
@@ -81,36 +82,103 @@ enum StatusLancamento {
   fechado
 }
 
-model Deposito {
+/// Topo da hierarquia multi-tenant: totalmente isolado de outros grupos (sem
+/// nenhuma visibilidade cruzada). Criado apenas pelo usuário master (perfil
+/// de plataforma, sem grupo) através da área /admin.
+model GrupoEmpresarial {
   id       String   @id @default(uuid())
   nome     String
-  endereco String?
   ativo    Boolean  @default(true)
   criadoEm DateTime @default(now()) @map("criado_em")
 
-  usuariosPadrao     Usuario[]        @relation("UsuarioDepositoPadrao")
-  produtoEstoques    ProdutoEstoque[]
-  movimentacoes      Movimentacao[]
-  ordensServico      OrdemServico[]
-  orcamentos         Orcamento[]
-  lancamentos        Lancamento[]     @relation("LancamentoDeposito")
-  lancamentosOrigem  Lancamento[]     @relation("LancamentoDepositoOrigem")
-  lancamentosDestino Lancamento[]     @relation("LancamentoDepositoDestino")
+  empresas       Empresa[]
+  usuarios       Usuario[]
+  categorias     Categoria[]
+  unidadesMedida UnidadeMedida[]
+  tabelasPreco   TabelaPreco[]
+  produtos       Produto[]
+  servicos       Servico[]
+  fornecedores   Fornecedor[]
+  clientes       Cliente[]
+  vendedores     Vendedor[]
+  movimentacoes  Movimentacao[]
+  ordensServico  OrdemServico[]
+  orcamentos     Orcamento[]
+  lancamentos    Lancamento[]
+
+  @@map("grupos_empresariais")
+}
+
+model Empresa {
+  id       String   @id @default(uuid())
+  grupoId  String   @map("grupo_id")
+  nome     String
+  cnpj     String?
+  ativo    Boolean  @default(true)
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  grupo           GrupoEmpresarial @relation(fields: [grupoId], references: [id], onDelete: Restrict)
+  depositos       Deposito[]
+  usuarios        UsuarioEmpresa[]
+  produtoEstoques ProdutoEstoque[]
+  movimentacoes   Movimentacao[]
+  ordensServico   OrdemServico[]
+  orcamentos      Orcamento[]
+  lancamentos     Lancamento[]
+
+  @@map("empresas")
+}
+
+/// Acesso restrito: quais Empresas (dentro do grupo do usuário) cada Usuario
+/// pode escolher no login — não é automático a todas as empresas do grupo.
+model UsuarioEmpresa {
+  id               String   @id @default(uuid())
+  usuarioId        String   @map("usuario_id")
+  empresaId        String   @map("empresa_id")
+  depositoPadraoId String?  @map("deposito_padrao_id")
+  criadoEm         DateTime @default(now()) @map("criado_em")
+
+  usuario        Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  empresa        Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  depositoPadrao Deposito? @relation("UsuarioEmpresaDepositoPadrao", fields: [depositoPadraoId], references: [id], onDelete: Restrict)
+
+  @@unique([usuarioId, empresaId])
+  @@map("usuario_empresas")
+}
+
+model Deposito {
+  id        String   @id @default(uuid())
+  empresaId String   @map("empresa_id")
+  nome      String
+  endereco  String?
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  empresa               Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  usuarioEmpresasPadrao UsuarioEmpresa[] @relation("UsuarioEmpresaDepositoPadrao")
+  produtoEstoques       ProdutoEstoque[]
+  movimentacoes         Movimentacao[]
+  ordensServico         OrdemServico[]
+  orcamentos            Orcamento[]
+  lancamentos           Lancamento[]     @relation("LancamentoDeposito")
+  lancamentosOrigem     Lancamento[]     @relation("LancamentoDepositoOrigem")
+  lancamentosDestino    Lancamento[]     @relation("LancamentoDepositoDestino")
 
   @@map("depositos")
 }
 
 model Usuario {
-  id               String   @id @default(uuid())
-  nome             String
-  email            String   @unique
-  senhaHash        String   @map("senha_hash")
-  perfil           Perfil   @default(vendedor)
-  depositoPadraoId String?  @map("deposito_padrao_id")
-  ativo            Boolean  @default(true)
-  criadoEm         DateTime @default(now()) @map("criado_em")
+  id        String   @id @default(uuid())
+  nome      String
+  email     String   @unique
+  senhaHash String   @map("senha_hash")
+  perfil    Perfil   @default(vendedor)
+  grupoId   String?  @map("grupo_id") // NULL somente para perfil = master (usuário de plataforma)
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now()) @map("criado_em")
 
-  depositoPadrao Deposito?      @relation("UsuarioDepositoPadrao", fields: [depositoPadraoId], references: [id])
+  grupo          GrupoEmpresarial? @relation(fields: [grupoId], references: [id], onDelete: Restrict)
+  empresasAcesso UsuarioEmpresa[]
   movimentacoes  Movimentacao[]
   ordensServico  OrdemServico[]
   orcamentos     Orcamento[]
@@ -121,6 +189,7 @@ model Usuario {
 
 model Fornecedor {
   id         String     @id @default(uuid())
+  grupoId    String     @map("grupo_id")
   nome       String
   tipoPessoa TipoPessoa @map("tipo_pessoa")
   documento  String?
@@ -128,6 +197,7 @@ model Fornecedor {
   email      String?
   criadoEm   DateTime   @default(now()) @map("criado_em")
 
+  grupo         GrupoEmpresarial @relation(fields: [grupoId], references: [id], onDelete: Restrict)
   movimentacoes Movimentacao[]
   orcamentos    Orcamento[]
   lancamentos   Lancamento[]
@@ -137,6 +207,7 @@ model Fornecedor {
 
 model Cliente {
   id                  String      @id @default(uuid())
+  grupoId             String      @map("grupo_id")
   nome                String
   tipoCliente         TipoCliente @map("tipo_cliente")
   telefone            String?
@@ -144,7 +215,8 @@ model Cliente {
   tabelaPrecoPadraoId String?     @map("tabela_preco_padrao_id")
   criadoEm            DateTime    @default(now()) @map("criado_em")
 
-  tabelaPrecoPadrao TabelaPreco?   @relation(fields: [tabelaPrecoPadraoId], references: [id])
+  grupo             GrupoEmpresarial @relation(fields: [grupoId], references: [id], onDelete: Restrict)
+  tabelaPrecoPadrao TabelaPreco?     @relation(fields: [tabelaPrecoPadraoId], references: [id])
   movimentacoes     Movimentacao[]
   ordensServico     OrdemServico[]
   lancamentos       Lancamento[]
@@ -158,6 +230,7 @@ model Cliente {
 /// inclusive ser lançada por um usuário de outro perfil (ex.: estoquista).
 model Vendedor {
   id             String        @id @default(uuid())
+  grupoId        String        @map("grupo_id")
   nome           String
   ativo          Boolean       @default(true)
   recebeComissao Boolean       @default(false) @map("recebe_comissao")
@@ -165,6 +238,7 @@ model Vendedor {
   valorComissao  Decimal?      @map("valor_comissao") @db.Decimal(14, 4)
   criadoEm       DateTime      @default(now()) @map("criado_em")
 
+  grupo         GrupoEmpresarial @relation(fields: [grupoId], references: [id], onDelete: Restrict)
   movimentacoes Movimentacao[]
   ordensServico OrdemServico[]
   lancamentos   Lancamento[]
@@ -174,23 +248,29 @@ model Vendedor {
 
 model Categoria {
   id       String   @id @default(uuid())
-  nome     String   @unique
+  grupoId  String   @map("grupo_id")
+  nome     String
   ativo    Boolean  @default(true)
   criadoEm DateTime @default(now()) @map("criado_em")
 
+  grupo    GrupoEmpresarial @relation(fields: [grupoId], references: [id], onDelete: Restrict)
   produtos Produto[]
 
+  @@unique([grupoId, nome])
   @@map("categorias")
 }
 
 model UnidadeMedida {
   id       String   @id @default(uuid())
-  nome     String   @unique
+  grupoId  String   @map("grupo_id")
+  nome     String
   ativo    Boolean  @default(true)
   criadoEm DateTime @default(now()) @map("criado_em")
 
+  grupo    GrupoEmpresarial @relation(fields: [grupoId], references: [id], onDelete: Restrict)
   produtos Produto[]
 
+  @@unique([grupoId, nome])
   @@map("unidades_medida")
 }
 
@@ -200,13 +280,16 @@ model UnidadeMedida {
 /// editável. Sem versionamento: é um valor mutável, como Servico.precoPadrao.
 model TabelaPreco {
   id       String   @id @default(uuid())
-  nome     String   @unique
+  grupoId  String   @map("grupo_id")
+  nome     String
   ativo    Boolean  @default(true)
   criadoEm DateTime @default(now()) @map("criado_em")
 
+  grupo    GrupoEmpresarial  @relation(fields: [grupoId], references: [id], onDelete: Restrict)
   itens    ItemTabelaPreco[]
   clientes Cliente[]
 
+  @@unique([grupoId, nome])
   @@map("tabelas_preco")
 }
 
@@ -225,7 +308,8 @@ model ItemTabelaPreco {
 
 model Produto {
   id                String            @id @default(uuid())
-  sku               String            @unique
+  grupoId           String            @map("grupo_id")
+  sku               String
   nome              String
   categoriaId       String            @map("categoria_id")
   marca             String?
@@ -237,6 +321,7 @@ model Produto {
   ativo             Boolean           @default(true)
   criadoEm          DateTime          @default(now()) @map("criado_em")
 
+  grupo            GrupoEmpresarial          @relation(fields: [grupoId], references: [id], onDelete: Restrict)
   categoria        Categoria                 @relation(fields: [categoriaId], references: [id])
   unidadeMedida    UnidadeMedida             @relation(fields: [unidadeMedidaId], references: [id])
   estoques         ProdutoEstoque[]
@@ -246,6 +331,7 @@ model Produto {
   itensTabelaPreco ItemTabelaPreco[]
   itensLancamento  ItemLancamento[]
 
+  @@unique([grupoId, sku])
   @@map("produtos")
 }
 
@@ -253,6 +339,7 @@ model ProdutoEstoque {
   id              String   @id @default(uuid())
   produtoId       String   @map("produto_id")
   depositoId      String   @map("deposito_id")
+  empresaId       String   @map("empresa_id")
   quantidadeSaldo Decimal  @default(0) @map("quantidade_saldo") @db.Decimal(14, 3)
   custoMedioAtual Decimal  @default(0) @map("custo_medio_atual") @db.Decimal(14, 4)
   valorTotalSaldo Decimal  @default(0) @map("valor_total_saldo") @db.Decimal(14, 2)
@@ -260,6 +347,7 @@ model ProdutoEstoque {
 
   produto  Produto  @relation(fields: [produtoId], references: [id])
   deposito Deposito @relation(fields: [depositoId], references: [id])
+  empresa  Empresa  @relation(fields: [empresaId], references: [id], onDelete: Restrict)
 
   @@unique([produtoId, depositoId])
   @@map("produto_estoque")
@@ -269,6 +357,8 @@ model Movimentacao {
   id                  String        @id @default(uuid())
   produtoId           String        @map("produto_id")
   depositoId          String        @map("deposito_id")
+  empresaId           String        @map("empresa_id")
+  grupoId             String        @map("grupo_id")
   tipoMovimento       TipoMovimento @map("tipo_movimento")
   dataMovimento       DateTime      @default(now()) @map("data_movimento")
   quantidade          Decimal       @db.Decimal(14, 3)
@@ -289,19 +379,22 @@ model Movimentacao {
   estornoDeId         String?       @map("estorno_de_id")
   criadoEm            DateTime      @default(now()) @map("criado_em")
 
-  produto      Produto        @relation(fields: [produtoId], references: [id])
-  deposito     Deposito       @relation(fields: [depositoId], references: [id])
-  cliente      Cliente?       @relation(fields: [clienteId], references: [id])
-  fornecedor   Fornecedor?    @relation(fields: [fornecedorId], references: [id])
-  vendedor     Vendedor?      @relation(fields: [vendedorId], references: [id])
-  usuario      Usuario        @relation(fields: [usuarioId], references: [id])
-  ordemServico OrdemServico?  @relation(fields: [ordemServicoId], references: [id])
-  orcamento    Orcamento?     @relation(fields: [orcamentoId], references: [id])
-  lancamento   Lancamento?    @relation(fields: [lancamentoId], references: [id])
-  estornoDe    Movimentacao?  @relation("EstornoMovimentacao", fields: [estornoDeId], references: [id])
-  estornos     Movimentacao[] @relation("EstornoMovimentacao")
+  produto      Produto          @relation(fields: [produtoId], references: [id])
+  deposito     Deposito         @relation(fields: [depositoId], references: [id])
+  empresa      Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  grupo        GrupoEmpresarial @relation(fields: [grupoId], references: [id], onDelete: Restrict)
+  cliente      Cliente?         @relation(fields: [clienteId], references: [id])
+  fornecedor   Fornecedor?      @relation(fields: [fornecedorId], references: [id])
+  vendedor     Vendedor?        @relation(fields: [vendedorId], references: [id])
+  usuario      Usuario          @relation(fields: [usuarioId], references: [id])
+  ordemServico OrdemServico?    @relation(fields: [ordemServicoId], references: [id])
+  orcamento    Orcamento?       @relation(fields: [orcamentoId], references: [id])
+  lancamento   Lancamento?      @relation(fields: [lancamentoId], references: [id])
+  estornoDe    Movimentacao?    @relation("EstornoMovimentacao", fields: [estornoDeId], references: [id])
+  estornos     Movimentacao[]   @relation("EstornoMovimentacao")
 
   @@index([produtoId, depositoId, dataMovimento])
+  @@index([empresaId, dataMovimento])
   @@map("movimentacoes")
 }
 
@@ -322,6 +415,8 @@ model Lancamento {
   depositoId        String?          @map("deposito_id")
   depositoOrigemId  String?          @map("deposito_origem_id")
   depositoDestinoId String?          @map("deposito_destino_id")
+  empresaId         String           @map("empresa_id")
+  grupoId           String           @map("grupo_id")
   fornecedorId      String?          @map("fornecedor_id")
   clienteId         String?          @map("cliente_id")
   vendedorId        String?          @map("vendedor_id")
@@ -334,6 +429,8 @@ model Lancamento {
   deposito        Deposito?        @relation("LancamentoDeposito", fields: [depositoId], references: [id])
   depositoOrigem  Deposito?        @relation("LancamentoDepositoOrigem", fields: [depositoOrigemId], references: [id])
   depositoDestino Deposito?        @relation("LancamentoDepositoDestino", fields: [depositoDestinoId], references: [id])
+  empresa         Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  grupo           GrupoEmpresarial @relation(fields: [grupoId], references: [id], onDelete: Restrict)
   fornecedor      Fornecedor?      @relation(fields: [fornecedorId], references: [id])
   cliente         Cliente?         @relation(fields: [clienteId], references: [id])
   vendedor        Vendedor?        @relation(fields: [vendedorId], references: [id])
@@ -341,6 +438,7 @@ model Lancamento {
   itens           ItemLancamento[]
   movimentacoes   Movimentacao[]
 
+  @@index([empresaId, criadoEm])
   @@map("lancamentos")
 }
 
@@ -360,13 +458,16 @@ model ItemLancamento {
 
 model Servico {
   id          String   @id @default(uuid())
-  nome        String   @unique
+  grupoId     String   @map("grupo_id")
+  nome        String
   precoPadrao Decimal  @default(0) @map("preco_padrao") @db.Decimal(14, 2)
   ativo       Boolean  @default(true)
   criadoEm    DateTime @default(now()) @map("criado_em")
 
+  grupo   GrupoEmpresarial          @relation(fields: [grupoId], references: [id], onDelete: Restrict)
   itensOS ItemOrdemServicoServico[]
 
+  @@unique([grupoId, nome])
   @@map("servicos")
 }
 
@@ -375,6 +476,8 @@ model OrdemServico {
   numero      Int       @unique @default(autoincrement())
   clienteId   String    @map("cliente_id")
   depositoId  String    @map("deposito_id")
+  empresaId   String    @map("empresa_id")
+  grupoId     String    @map("grupo_id")
   vendedorId  String    @map("vendedor_id")
   usuarioId   String    @map("usuario_id")
   status      StatusOS  @default(aberta)
@@ -382,15 +485,18 @@ model OrdemServico {
   criadaEm    DateTime  @default(now()) @map("criada_em")
   concluidaEm DateTime? @map("concluida_em")
 
-  cliente  Cliente  @relation(fields: [clienteId], references: [id])
-  deposito Deposito @relation(fields: [depositoId], references: [id])
-  vendedor Vendedor @relation(fields: [vendedorId], references: [id])
-  usuario  Usuario  @relation(fields: [usuarioId], references: [id])
+  cliente  Cliente          @relation(fields: [clienteId], references: [id])
+  deposito Deposito         @relation(fields: [depositoId], references: [id])
+  empresa  Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  grupo    GrupoEmpresarial @relation(fields: [grupoId], references: [id], onDelete: Restrict)
+  vendedor Vendedor         @relation(fields: [vendedorId], references: [id])
+  usuario  Usuario          @relation(fields: [usuarioId], references: [id])
 
   itensProduto  ItemOrdemServicoProduto[]
   itensServico  ItemOrdemServicoServico[]
   movimentacoes Movimentacao[]
 
+  @@index([empresaId, criadaEm])
   @@map("ordens_servico")
 }
 
@@ -431,6 +537,8 @@ model Orcamento {
   numero                    Int             @unique @default(autoincrement())
   descricao                 String?
   depositoId                String          @map("deposito_id")
+  empresaId                 String          @map("empresa_id")
+  grupoId                   String          @map("grupo_id")
   fornecedorId              String?         @map("fornecedor_id")
   usuarioId                 String          @map("usuario_id")
   status                    StatusOrcamento @default(aberto)
@@ -440,12 +548,15 @@ model Orcamento {
   fechadoEm                 DateTime?       @map("fechado_em")
   reabertoEm                DateTime?       @map("reaberto_em")
 
-  deposito      Deposito        @relation(fields: [depositoId], references: [id])
-  fornecedor    Fornecedor?     @relation(fields: [fornecedorId], references: [id])
-  usuario       Usuario         @relation(fields: [usuarioId], references: [id])
+  deposito      Deposito         @relation(fields: [depositoId], references: [id])
+  empresa       Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  grupo         GrupoEmpresarial @relation(fields: [grupoId], references: [id], onDelete: Restrict)
+  fornecedor    Fornecedor?      @relation(fields: [fornecedorId], references: [id])
+  usuario       Usuario          @relation(fields: [usuarioId], references: [id])
   itens         ItemOrcamento[]
   movimentacoes Movimentacao[]
 
+  @@index([empresaId, criadoEm])
   @@map("orcamentos")
 }
 

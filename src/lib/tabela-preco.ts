@@ -7,11 +7,11 @@ import { db } from "@/lib/db";
  * `DISTINCT ON` é a forma idiomática no Postgres de pegar "a última linha de
  * cada grupo" sem uma subquery de agregação separada.
  */
-export async function obterUltimosPrecosVenda(): Promise<Map<string, number>> {
+export async function obterUltimosPrecosVenda(empresaId: string): Promise<Map<string, number>> {
   const linhas = await db.$queryRaw<{ produto_id: string; preco_venda: string }[]>`
     SELECT DISTINCT ON (produto_id) produto_id, preco_venda
     FROM movimentacoes
-    WHERE tipo_movimento IN ('venda', 'os_saida') AND preco_venda IS NOT NULL
+    WHERE tipo_movimento IN ('venda', 'os_saida') AND preco_venda IS NOT NULL AND empresa_id = ${empresaId}::uuid
     ORDER BY produto_id, data_movimento DESC
   `;
   return new Map(linhas.map((l) => [l.produto_id, Number(l.preco_venda)]));
@@ -22,7 +22,7 @@ export async function obterUltimosPrecosVenda(): Promise<Map<string, number>> {
  * exibir a margem estimada na tela de gestão de tabela de preços; não é usado
  * em nenhum cálculo de estoque/Kardex.
  */
-export async function obterCustoMedioCombinadoPorProduto(): Promise<Map<string, number>> {
+export async function obterCustoMedioCombinadoPorProduto(empresaId: string): Promise<Map<string, number>> {
   const linhas = await db.$queryRaw<{ produto_id: string; custo_medio: string }[]>`
     SELECT
       produto_id,
@@ -31,6 +31,7 @@ export async function obterCustoMedioCombinadoPorProduto(): Promise<Map<string, 
         ELSE 0
       END AS custo_medio
     FROM produto_estoque
+    WHERE empresa_id = ${empresaId}::uuid
     GROUP BY produto_id
   `;
   return new Map(linhas.map((l) => [l.produto_id, Number(l.custo_medio)]));

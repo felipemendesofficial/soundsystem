@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { DepositosLista, type ItemDeposito } from "@/components/depositos-lista";
 
 export default async function DepositosPage() {
-  const depositos = await db.deposito.findMany({ orderBy: { nome: "asc" } });
+  const session = await auth();
+  const depositos = await db.deposito.findMany({
+    where: { empresaId: session!.user.empresaId! },
+    orderBy: { nome: "asc" },
+  });
 
   const itensLista: ItemDeposito[] = depositos.map((d) => ({
     id: d.id,

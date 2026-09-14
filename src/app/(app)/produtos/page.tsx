@@ -1,10 +1,13 @@
 import Link from "next/link";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { ProdutosLista, type ItemProduto } from "@/components/produtos-lista";
 
 export default async function ProdutosPage() {
+  const session = await auth();
   const produtos = await db.produto.findMany({
+    where: { grupoId: session!.user.grupoId! },
     include: { categoria: true },
     orderBy: { nome: "asc" },
   });

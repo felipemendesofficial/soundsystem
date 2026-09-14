@@ -17,8 +17,14 @@ export default async function UsuariosPage() {
   if (!session?.user || !podeGerenciarUsuarios(session.user.perfil)) redirect("/");
 
   const usuarios = await db.usuario.findMany({
+    where: { grupoId: session.user.grupoId! },
     orderBy: { nome: "asc" },
-    include: { depositoPadrao: true },
+    include: {
+      empresasAcesso: {
+        where: { empresaId: session.user.empresaId! },
+        include: { depositoPadrao: true },
+      },
+    },
   });
 
   const itensLista: ItemUsuario[] = usuarios.map((u) => ({
@@ -26,7 +32,7 @@ export default async function UsuariosPage() {
     nome: u.nome,
     email: u.email,
     perfil: PERFIL_LABEL[u.perfil],
-    depositoPadrao: u.depositoPadrao?.nome ?? "-",
+    depositoPadrao: u.empresasAcesso[0]?.depositoPadrao?.nome ?? "-",
     ativo: u.ativo,
     buscaTexto: [u.nome, u.email].join(" ").toLowerCase(),
   }));

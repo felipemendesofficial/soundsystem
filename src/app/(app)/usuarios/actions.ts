@@ -38,7 +38,7 @@ const atualizarSchema = z.object({
 });
 
 export async function criarUsuario(_prev: UsuarioFormState, formData: FormData): Promise<UsuarioFormState> {
-  await exigirAdmin();
+  const session = await exigirAdmin();
 
   const parsed = criarSchema.safeParse({
     nome: formData.get("nome"),
@@ -51,15 +51,27 @@ export async function criarUsuario(_prev: UsuarioFormState, formData: FormData):
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
   try {
-    await db.usuario.create({
-      data: {
-        nome: parsed.data.nome,
-        email: parsed.data.email,
-        senhaHash: await bcrypt.hash(parsed.data.senha, 10),
-        perfil: parsed.data.perfil,
-        depositoPadraoId: parsed.data.depositoPadraoId || null,
-        ativo: parsed.data.ativo === "on",
-      },
+    // Cria o usuário no grupo do admin e já dá acesso à empresa ativa dele —
+    // acesso a outras empresas do grupo é concedido depois, editando o
+    // usuário (ver atualizarUsuario / UsuarioEmpresa).
+    await db.$transaction(async (tx) => {
+      const usuario = await tx.usuario.create({
+        data: {
+          nome: parsed.data.nome,
+          email: parsed.data.email,
+          senhaHash: await bcrypt.hash(parsed.data.senha, 10),
+          perfil: parsed.data.perfil,
+          ativo: parsed.data.ativo === "on",
+          grupoId: session.user.grupoId!,
+        },
+      });
+      await tx.usuarioEmpresa.create({
+        data: {
+          usuarioId: usuario.id,
+          empresaId: session.user.empresaId!,
+          depositoPadraoId: parsed.data.depositoPadraoId || null,
+        },
+      });
     });
   } catch {
     return { erro: "Já existe um usuário com esse email." };
@@ -74,7 +86,7 @@ export async function atualizarUsuario(
   _prev: UsuarioFormState,
   formData: FormData
 ): Promise<UsuarioFormState> {
-  await exigirAdmin();
+  const session = await exigirAdmin();
 
   const parsed = atualizarSchema.safeParse({
     nome: formData.get("nome"),
@@ -87,18 +99,31 @@ export async function atualizarUsuario(
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
   try {
-    await db.usuario.update({
-      where: { id },
-      data: {
-        nome: parsed.data.nome,
-        email: parsed.data.email,
-        perfil: parsed.data.perfil,
-        depositoPadraoId: parsed.data.depositoPadraoId || null,
-        ativo: parsed.data.ativo === "on",
-        ...(parsed.data.senha ? { senhaHash: await bcrypt.hash(parsed.data.senha, 10) } : {}),
-      },
+    await db.$transaction(async (tx) => {
+      const { count } = await tx.usuario.updateMany({
+        where: { id, grupoId: session.user.grupoId! },
+        data: {
+          nome: parsed.data.nome,
+          email: parsed.data.email,
+          perfil: parsed.data.perfil,
+          ativo: parsed.data.ativo === "on",
+          ...(parsed.data.senha ? { senhaHash: await bcrypt.hash(parsed.data.senha, 10) } : {}),
+        },
+      });
+      if (count === 0) throw new Error("NAO_ENCONTRADO");
+
+      await tx.usuarioEmpresa.upsert({
+        where: { usuarioId_empresaId: { usuarioId: id, empresaId: session.user.empresaId! } },
+        update: { depositoPadraoId: parsed.data.depositoPadraoId || null },
+        create: {
+          usuarioId: id,
+          empresaId: session.user.empresaId!,
+          depositoPadraoId: parsed.data.depositoPadraoId || null,
+        },
+      });
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof Error && e.message === "NAO_ENCONTRADO") return { erro: "Usuário não encontrado." };
     return { erro: "Já existe um usuário com esse email." };
   }
 

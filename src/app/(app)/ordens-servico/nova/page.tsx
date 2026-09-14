@@ -6,17 +6,19 @@ import { OSForm } from "@/components/os-form";
 
 export default async function NovaOrdemServicoPage() {
   const session = await auth();
+  const grupoId = session!.user.grupoId!;
+  const empresaId = session!.user.empresaId!;
 
   const [clientes, depositos, vendedores, produtos, servicos, tabelasPreco, itensTabelaPreco, ultimosPrecos] =
     await Promise.all([
-      db.cliente.findMany({ orderBy: { nome: "asc" } }),
-      db.deposito.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-      db.vendedor.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-      db.produto.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-      db.servico.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-      db.tabelaPreco.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-      db.itemTabelaPreco.findMany(),
-      obterUltimosPrecosVenda(),
+      db.cliente.findMany({ where: { grupoId }, orderBy: { nome: "asc" } }),
+      db.deposito.findMany({ where: { ativo: true, empresaId }, orderBy: { nome: "asc" } }),
+      db.vendedor.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
+      db.produto.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
+      db.servico.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
+      db.tabelaPreco.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
+      db.itemTabelaPreco.findMany({ where: { tabelaPreco: { grupoId } } }),
+      obterUltimosPrecosVenda(empresaId),
     ]);
 
   const precosPorTabela: Record<string, Record<string, number>> = {};

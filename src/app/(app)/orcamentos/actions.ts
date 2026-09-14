@@ -10,6 +10,7 @@ import {
   estornarEntradaNaTransacao,
   mensagemSaldoInsuficiente,
   registrarEntradaNaTransacao,
+  resolverTenantPorDeposito,
   SaldoInsuficienteError,
 } from "@/lib/kardex";
 import { calcularRateio } from "@/lib/orcamento";
@@ -98,10 +99,13 @@ export async function criarOrcamento(_prev: OrcamentoFormState, formData: FormDa
   const modo = lerModoCalculo(formData);
   if (modo.erro) return { erro: modo.erro };
 
+  const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
   const orcamento = await db.orcamento.create({
     data: {
       descricao: parsed.data.descricao || null,
       depositoId: parsed.data.depositoId,
+      empresaId,
+      grupoId,
       fornecedorId: parsed.data.fornecedorId || null,
       usuarioId: permissao.session.user.id,
       taxaRevenda: modo.taxaRevenda ?? null,
@@ -128,7 +132,7 @@ export async function atualizarOrcamento(
   const permissao = await exigirPermissao();
   if ("erro" in permissao) return permissao;
 
-  const atual = await db.orcamento.findUnique({ where: { id } });
+  const atual = await db.orcamento.findFirst({ where: { id, empresaId: permissao.session.user.empresaId! } });
   if (!atual) return { erro: "Orçamento não encontrado." };
   if (atual.status !== "aberto") return { erro: "Esse Orçamento está fechado e não pode mais ser editado." };
 
@@ -138,6 +142,7 @@ export async function atualizarOrcamento(
   const modo = lerModoCalculo(formData);
   if (modo.erro) return { erro: modo.erro };
 
+  const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
   await db.$transaction(async (tx) => {
     await tx.itemOrcamento.deleteMany({ where: { orcamentoId: id } });
     await tx.orcamento.update({
@@ -145,6 +150,8 @@ export async function atualizarOrcamento(
       data: {
         descricao: parsed.data.descricao || null,
         depositoId: parsed.data.depositoId,
+        empresaId,
+        grupoId,
         fornecedorId: parsed.data.fornecedorId || null,
         taxaRevenda: modo.taxaRevenda ?? null,
         valorCompraTotalInformado: modo.valorCompraTotalInformado ?? null,
@@ -179,7 +186,10 @@ export async function finalizarOrcamento(
 
   try {
     await db.$transaction(async (tx) => {
-      const orcamento = await tx.orcamento.findUnique({ where: { id }, include: { itens: true } });
+      const orcamento = await tx.orcamento.findFirst({
+        where: { id, empresaId: session.user.empresaId! },
+        include: { itens: true },
+      });
       if (!orcamento) throw new Error("Orçamento não encontrado.");
       if (orcamento.status !== "aberto") throw new Error("Esse Orçamento já foi fechado.");
       if (orcamento.itens.length === 0) throw new Error("Adicione ao menos um item antes de finalizar.");
@@ -253,7 +263,10 @@ export async function cancelarFechamentoOrcamento(
 
   try {
     await db.$transaction(async (tx) => {
-      const orcamento = await tx.orcamento.findUnique({ where: { id }, include: { itens: true } });
+      const orcamento = await tx.orcamento.findFirst({
+        where: { id, empresaId: session.user.empresaId! },
+        include: { itens: true },
+      });
       if (!orcamento) throw new Error("Orçamento não encontrado.");
       if (orcamento.status !== "fechado") throw new Error("Esse Orçamento não está fechado.");
 

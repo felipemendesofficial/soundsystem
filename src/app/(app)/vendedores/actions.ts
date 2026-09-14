@@ -61,7 +61,7 @@ export async function criarVendedor(_prev: VendedorFormState, formData: FormData
   const { valido, data } = montarDados(parsed.data);
   if (!valido) return { erro: "Selecione o tipo e informe o valor da comissão." };
 
-  await db.vendedor.create({ data });
+  await db.vendedor.create({ data: { ...data, grupoId: permissao.session.user.grupoId! } });
 
   revalidatePath("/vendedores");
   redirect("/vendedores");
@@ -81,7 +81,11 @@ export async function atualizarVendedor(
   const { valido, data } = montarDados(parsed.data);
   if (!valido) return { erro: "Selecione o tipo e informe o valor da comissão." };
 
-  await db.vendedor.update({ where: { id }, data });
+  const { count } = await db.vendedor.updateMany({
+    where: { id, grupoId: permissao.session.user.grupoId! },
+    data,
+  });
+  if (count === 0) return { erro: "Vendedor não encontrado." };
 
   revalidatePath("/vendedores");
   redirect("/vendedores");

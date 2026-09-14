@@ -1,11 +1,13 @@
 import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { atualizarUnidadeMedida } from "../actions";
 import { UnidadeMedidaForm } from "../unidade-medida-form";
 
 export default async function EditarUnidadeMedidaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const unidade = await db.unidadeMedida.findUnique({ where: { id } });
+  const session = await auth();
+  const unidade = await db.unidadeMedida.findFirst({ where: { id, grupoId: session!.user.grupoId! } });
   if (!unidade) notFound();
 
   const action = atualizarUnidadeMedida.bind(null, id);

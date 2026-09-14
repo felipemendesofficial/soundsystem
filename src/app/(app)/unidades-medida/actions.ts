@@ -23,14 +23,14 @@ export async function criarUnidadeMedida(
   _prev: UnidadeMedidaFormState,
   formData: FormData
 ): Promise<UnidadeMedidaFormState> {
-  await exigirSessao();
+  const session = await exigirSessao();
   const parsed = schema.safeParse({ nome: formData.get("nome") });
   if (!parsed.success) {
     return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   }
 
   try {
-    await db.unidadeMedida.create({ data: { nome: parsed.data.nome } });
+    await db.unidadeMedida.create({ data: { nome: parsed.data.nome, grupoId: session.user.grupoId! } });
   } catch {
     return { erro: "Já existe uma unidade de medida com esse nome." };
   }
@@ -44,14 +44,18 @@ export async function atualizarUnidadeMedida(
   _prev: UnidadeMedidaFormState,
   formData: FormData
 ): Promise<UnidadeMedidaFormState> {
-  await exigirSessao();
+  const session = await exigirSessao();
   const parsed = schema.safeParse({ nome: formData.get("nome") });
   if (!parsed.success) {
     return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   }
 
   try {
-    await db.unidadeMedida.update({ where: { id }, data: { nome: parsed.data.nome } });
+    const { count } = await db.unidadeMedida.updateMany({
+      where: { id, grupoId: session.user.grupoId! },
+      data: { nome: parsed.data.nome },
+    });
+    if (count === 0) return { erro: "Unidade de medida não encontrada." };
   } catch {
     return { erro: "Já existe uma unidade de medida com esse nome." };
   }

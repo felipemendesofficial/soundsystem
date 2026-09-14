@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { ServicosLista, type ItemServico } from "@/components/servicos-lista";
@@ -8,7 +9,11 @@ function formatarMoeda(valor: unknown) {
 }
 
 export default async function ServicosPage() {
-  const servicos = await db.servico.findMany({ orderBy: { nome: "asc" } });
+  const session = await auth();
+  const servicos = await db.servico.findMany({
+    where: { grupoId: session!.user.grupoId! },
+    orderBy: { nome: "asc" },
+  });
 
   const itensLista: ItemServico[] = servicos.map((s) => ({
     id: s.id,

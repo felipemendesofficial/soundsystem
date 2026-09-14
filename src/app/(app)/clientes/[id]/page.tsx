@@ -1,13 +1,16 @@
 import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { atualizarCliente } from "../actions";
 import { ClienteForm } from "../cliente-form";
 
 export default async function EditarClientePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const session = await auth();
+  const grupoId = session!.user.grupoId!;
   const [cliente, tabelasPreco] = await Promise.all([
-    db.cliente.findUnique({ where: { id } }),
-    db.tabelaPreco.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
+    db.cliente.findFirst({ where: { id, grupoId } }),
+    db.tabelaPreco.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
   ]);
   if (!cliente) notFound();
 

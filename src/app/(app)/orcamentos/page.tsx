@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { StatusOrcamento } from "@/generated/prisma/client";
 import { Button } from "@/components/ui/button";
@@ -26,9 +27,10 @@ export default async function OrcamentosPage({
   searchParams: Promise<{ status?: string }>;
 }) {
   const { status } = await searchParams;
+  const session = await auth();
 
   const orcamentos = await db.orcamento.findMany({
-    where: status ? { status: status as StatusOrcamento } : undefined,
+    where: { empresaId: session!.user.empresaId!, ...(status ? { status: status as StatusOrcamento } : {}) },
     include: { itens: true },
     orderBy: { numero: "desc" },
   });

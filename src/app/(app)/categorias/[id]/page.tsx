@@ -1,11 +1,13 @@
 import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { atualizarCategoria } from "../actions";
 import { CategoriaForm } from "../categoria-form";
 
 export default async function EditarCategoriaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const categoria = await db.categoria.findUnique({ where: { id } });
+  const session = await auth();
+  const categoria = await db.categoria.findFirst({ where: { id, grupoId: session!.user.grupoId! } });
   if (!categoria) notFound();
 
   const action = atualizarCategoria.bind(null, id);
