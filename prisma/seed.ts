@@ -33,18 +33,24 @@ async function main() {
     },
   });
 
-  const senhaHashMaster = await bcrypt.hash("master123", 10);
+  // Credenciais do master vêm de env (MASTER_EMAIL/MASTER_SENHA em .env, nunca
+  // commitado) pra não gravar a senha real em texto puro no seed — sem elas,
+  // cai no login de teste de sempre.
+  const emailMaster = process.env.MASTER_EMAIL ?? "master@exemplo.com";
+  const senhaMaster = process.env.MASTER_SENHA ?? "master123";
+
+  const senhaHashMaster = await bcrypt.hash(senhaMaster, 10);
   const senhaHashAdmin = await bcrypt.hash("admin123", 10);
   const senhaHashEstoquista = await bcrypt.hash("estoque123", 10);
   const senhaHashVendedor = await bcrypt.hash("venda123", 10);
 
   // Master: usuário de plataforma, sem grupo — cria Grupos/Empresas via /admin.
   await db.usuario.upsert({
-    where: { email: "master@exemplo.com" },
-    update: {},
+    where: { email: emailMaster },
+    update: { senhaHash: senhaHashMaster },
     create: {
       nome: "Master",
-      email: "master@exemplo.com",
+      email: emailMaster,
       senhaHash: senhaHashMaster,
       perfil: "master",
     },
@@ -100,7 +106,7 @@ async function main() {
   }
 
   console.log("Seed concluído.");
-  console.log("Login master:     master@exemplo.com / master123");
+  console.log(`Login master:     ${emailMaster} / ${senhaMaster}`);
   console.log("Login admin:      admin@exemplo.com / admin123");
   console.log("Login estoquista: estoquista@exemplo.com / estoque123");
   console.log("Login vendedor:   vendedor@exemplo.com / venda123");
