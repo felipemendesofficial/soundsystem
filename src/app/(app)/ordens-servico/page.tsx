@@ -106,6 +106,7 @@ export default async function OrdensServicoPage({
       valorServicos: formatarMoeda(valorServicos),
       valorProdutos: formatarMoeda(valorProdutos),
       total: formatarMoeda(total),
+      data: os.criadaEm.toLocaleDateString("pt-BR"),
       margemProdutos,
       margemTotal,
       buscaTexto: [

@@ -14,6 +14,7 @@ export type ItemOrcamento = {
   valorVendaTotal: string;
   valorCompraTotal: string;
   taxaRevendaEfetiva: string;
+  data: string;
   buscaTexto: string;
 };
 
@@ -62,6 +63,10 @@ export function OrcamentosLista({ itens }: { itens: ItemOrcamento[] }) {
                   <div className="min-w-0">
                     <div className="truncate text-[11px] leading-tight text-muted-foreground">Taxa Revenda</div>
                     <div className="truncate text-[14px] leading-tight font-medium">{item.taxaRevendaEfetiva}</div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-[11px] leading-tight text-muted-foreground">Data</div>
+                    <div className="truncate text-[14px] leading-tight font-medium">{item.data}</div>
                   </div>
                 </div>
               </Link>

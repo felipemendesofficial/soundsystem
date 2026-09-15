@@ -73,6 +73,7 @@ export default async function OrcamentosPage({
       valorVendaTotal: formatarMoeda(valorVendaTotal),
       valorCompraTotal: formatarMoeda(valorCompraTotal),
       taxaRevendaEfetiva: formatarPercentual(taxaRevendaEfetiva),
+      data: o.criadoEm.toLocaleDateString("pt-BR"),
       buscaTexto: [`orçamento #${o.numero}`, o.descricao ?? "", ...o.itens.map((i) => i.produto.nome)]
         .join(" ")
         .toLowerCase(),

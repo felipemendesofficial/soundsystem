@@ -14,6 +14,7 @@ export type ItemOrdemServico = {
   valorServicos: string;
   valorProdutos: string;
   total: string;
+  data: string;
   margemProdutos?: string;
   margemTotal?: string;
   buscaTexto: string;
@@ -64,6 +65,10 @@ export function OrdensServicoLista({ itens }: { itens: ItemOrdemServico[] }) {
                   <div className="min-w-0">
                     <div className="truncate text-[11px] leading-tight text-muted-foreground">Total</div>
                     <div className="truncate text-[14px] leading-tight font-medium">{item.total}</div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-[11px] leading-tight text-muted-foreground">Data</div>
+                    <div className="truncate text-[14px] leading-tight font-medium">{item.data}</div>
                   </div>
                   {item.margemProdutos !== undefined && (
                     <div className="min-w-0">
