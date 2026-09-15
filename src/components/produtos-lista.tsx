@@ -22,7 +22,7 @@ export function ProdutosLista({ itens }: { itens: ItemProduto[] }) {
   const filtrados = termo ? itens.filter((i) => i.buscaTexto.includes(termo)) : itens;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <Input
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
@@ -35,35 +35,35 @@ export function ProdutosLista({ itens }: { itens: ItemProduto[] }) {
           {termo ? `Nenhum produto encontrado para "${busca.trim()}".` : "Nenhum produto cadastrado."}
         </p>
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-2">
           {filtrados.map((item) => (
-            <li key={item.id} className="relative rounded-lg border border-border bg-card p-5">
-              <span className="absolute top-5 right-5 size-2.5 rounded-full bg-accent" />
-              <div className="mb-4 flex items-center gap-2">
-                <h2 className="text-lg font-semibold">{item.nome}</h2>
+            <li key={item.id} className="relative rounded-lg border border-border bg-card p-3">
+              <span className="absolute top-3.5 right-3 size-2.5 rounded-full bg-accent" />
+              <div className="mb-2 flex items-center gap-2">
+                <h2 className="text-[15px] font-semibold">{item.nome}</h2>
                 {!item.controlaEstoque && (
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                     Não controla estoque
                   </span>
                 )}
               </div>
 
-              <div className="mb-4 grid grid-cols-3 gap-2">
+              <div className="mb-2 grid grid-cols-3 gap-x-2 gap-y-1.5">
                 <div className="min-w-0">
-                  <div className="mb-1 truncate text-[13px] text-muted-foreground">SKU</div>
-                  <div className="truncate text-[15.5px] font-medium">{item.sku}</div>
+                  <div className="truncate text-[11px] leading-tight text-muted-foreground">SKU</div>
+                  <div className="truncate text-[14px] leading-tight font-medium">{item.sku}</div>
                 </div>
                 <div className="min-w-0">
-                  <div className="mb-1 truncate text-[13px] text-muted-foreground">Categoria</div>
-                  <div className="truncate text-[15.5px] font-medium">{item.categoria}</div>
+                  <div className="truncate text-[11px] leading-tight text-muted-foreground">Categoria</div>
+                  <div className="truncate text-[14px] leading-tight font-medium">{item.categoria}</div>
                 </div>
                 <div className="min-w-0">
-                  <div className="mb-1 truncate text-[13px] text-muted-foreground">Marca/Modelo</div>
-                  <div className="truncate text-[15.5px] font-medium">{item.marcaModelo}</div>
+                  <div className="truncate text-[11px] leading-tight text-muted-foreground">Marca/Modelo</div>
+                  <div className="truncate text-[14px] leading-tight font-medium">{item.marcaModelo}</div>
                 </div>
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex gap-2">
                 <Button
                   render={<Link href={`/kardex/${item.id}`} />}
                   variant="outline"

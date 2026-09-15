@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 export type ItemServico = {
@@ -20,7 +19,7 @@ export function ServicosLista({ itens }: { itens: ItemServico[] }) {
   const filtrados = termo ? itens.filter((i) => i.nome.toLowerCase().includes(termo)) : itens;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <Input
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
@@ -33,27 +32,23 @@ export function ServicosLista({ itens }: { itens: ItemServico[] }) {
           {termo ? `Nenhum serviço encontrado para "${busca.trim()}".` : "Nenhum serviço cadastrado."}
         </p>
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-2">
           {filtrados.map((item) => (
-            <li key={item.id} className="relative rounded-lg border border-border bg-card p-5">
-              <Badge
-                variant={item.ativo ? "default" : "secondary"}
-                className="absolute top-5 right-5"
+            <li key={item.id}>
+              <Link
+                href={`/servicos/${item.id}`}
+                className="relative block rounded-lg border border-border bg-card p-3 active:bg-accent"
               >
-                {item.ativo ? "Ativo" : "Inativo"}
-              </Badge>
-              <h2 className="mb-4 text-lg font-semibold">{item.nome}</h2>
+                <Badge variant={item.ativo ? "default" : "secondary"} className="absolute top-3 right-3">
+                  {item.ativo ? "Ativo" : "Inativo"}
+                </Badge>
+                <h2 className="mb-2 text-[15px] font-semibold">{item.nome}</h2>
 
-              <div className="mb-4">
-                <div className="mb-1 text-[13px] text-muted-foreground">Preço Padrão</div>
-                <div className="text-[15.5px] font-medium">{item.precoPadrao}</div>
-              </div>
-
-              <div className="flex gap-3">
-                <Button render={<Link href={`/servicos/${item.id}`} />} size="sm">
-                  Editar
-                </Button>
-              </div>
+                <div className="min-w-0">
+                  <div className="truncate text-[11px] leading-tight text-muted-foreground">Preço Padrão</div>
+                  <div className="truncate text-[14px] leading-tight font-medium">{item.precoPadrao}</div>
+                </div>
+              </Link>
             </li>
           ))}
         </ul>

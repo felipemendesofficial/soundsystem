@@ -28,7 +28,7 @@ export function OrcamentosLista({ itens }: { itens: ItemOrcamento[] }) {
       <Input
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
-        placeholder="Buscar por número ou descrição"
+        placeholder="Buscar por número, descrição ou produto"
         aria-label="Buscar Orçamento"
       />
 

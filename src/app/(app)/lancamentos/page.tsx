@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import type { StatusLancamento } from "@/generated/prisma/client";
+import type { StatusLancamento, TipoLancamento } from "@/generated/prisma/client";
 import { Button } from "@/components/ui/button";
 import { StatusLancamentoFilter } from "@/components/status-lancamento-filter";
+import { TipoLancamentoFilter } from "@/components/tipo-lancamento-filter";
 import { PeriodoFilter } from "@/components/periodo-filter";
 import { LancamentosLista, type ItemLancamento } from "@/components/lancamentos-lista";
 import { podeVerCusto } from "@/lib/permissions";
@@ -40,9 +41,9 @@ function formatarMoeda(valor: number) {
 export default async function LancamentosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; periodo?: string; dataInicio?: string; dataFim?: string }>;
+  searchParams: Promise<{ status?: string; tipo?: string; periodo?: string; dataInicio?: string; dataFim?: string }>;
 }) {
-  const { status, periodo, dataInicio, dataFim } = await searchParams;
+  const { status, tipo, periodo, dataInicio, dataFim } = await searchParams;
   const session = await auth();
   const mostrarCusto = podeVerCusto(session!.user.perfil);
 
@@ -56,6 +57,7 @@ export default async function LancamentosPage({
     where: {
       empresaId: session!.user.empresaId!,
       ...(status ? { status: status as StatusLancamento } : {}),
+      ...(tipo ? { tipo: tipo as TipoLancamento } : {}),
       ...(filtroPeriodo ? { criadoEm: filtroPeriodo } : {}),
     },
     include: {
@@ -104,6 +106,7 @@ export default async function LancamentosPage({
       </div>
 
       <StatusLancamentoFilter />
+      <TipoLancamentoFilter />
       <PeriodoFilter padraoInicio={padraoInicio} padraoFim={padraoFim} />
 
       <LancamentosLista itens={itensLista} />

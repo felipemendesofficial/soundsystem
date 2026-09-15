@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 export type ItemUsuario = {
@@ -23,7 +22,7 @@ export function UsuariosLista({ itens }: { itens: ItemUsuario[] }) {
   const filtrados = termo ? itens.filter((i) => i.buscaTexto.includes(termo)) : itens;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <Input
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
@@ -36,37 +35,33 @@ export function UsuariosLista({ itens }: { itens: ItemUsuario[] }) {
           {termo ? `Nenhum usuário encontrado para "${busca.trim()}".` : "Nenhum usuário cadastrado."}
         </p>
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-2">
           {filtrados.map((item) => (
-            <li key={item.id} className="relative rounded-lg border border-border bg-card p-5">
-              <Badge
-                variant={item.ativo ? "default" : "secondary"}
-                className="absolute top-5 right-5"
+            <li key={item.id}>
+              <Link
+                href={`/usuarios/${item.id}`}
+                className="relative block rounded-lg border border-border bg-card p-3 active:bg-accent"
               >
-                {item.ativo ? "Ativo" : "Inativo"}
-              </Badge>
-              <h2 className="mb-4 text-lg font-semibold">{item.nome}</h2>
+                <Badge variant={item.ativo ? "default" : "secondary"} className="absolute top-3 right-3">
+                  {item.ativo ? "Ativo" : "Inativo"}
+                </Badge>
+                <h2 className="mb-2 text-[15px] font-semibold">{item.nome}</h2>
 
-              <div className="mb-4 grid grid-cols-3 gap-2">
-                <div className="min-w-0">
-                  <div className="mb-1 truncate text-[13px] text-muted-foreground">Email</div>
-                  <div className="truncate text-[15.5px] font-medium">{item.email}</div>
+                <div className="grid grid-cols-3 gap-x-2 gap-y-1.5">
+                  <div className="min-w-0">
+                    <div className="truncate text-[11px] leading-tight text-muted-foreground">Email</div>
+                    <div className="truncate text-[14px] leading-tight font-medium">{item.email}</div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-[11px] leading-tight text-muted-foreground">Perfil</div>
+                    <div className="truncate text-[14px] leading-tight font-medium">{item.perfil}</div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-[11px] leading-tight text-muted-foreground">Depósito</div>
+                    <div className="truncate text-[14px] leading-tight font-medium">{item.depositoPadrao}</div>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <div className="mb-1 truncate text-[13px] text-muted-foreground">Perfil</div>
-                  <div className="truncate text-[15.5px] font-medium">{item.perfil}</div>
-                </div>
-                <div className="min-w-0">
-                  <div className="mb-1 truncate text-[13px] text-muted-foreground">Depósito Padrão</div>
-                  <div className="truncate text-[15.5px] font-medium">{item.depositoPadrao}</div>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <Button render={<Link href={`/usuarios/${item.id}`} />} size="sm">
-                  Editar
-                </Button>
-              </div>
+              </Link>
             </li>
           ))}
         </ul>

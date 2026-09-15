@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { podeVerCusto } from "@/lib/permissions";
 import { EstoqueLista, type ItemEstoque } from "@/components/estoque-lista";
 import { DepositoFilter } from "@/components/deposito-filter";
+import { SaldoFilter } from "@/components/saldo-filter";
+import { CategoriaFilter } from "@/components/categoria-filter";
 import { Card, CardContent } from "@/components/ui/card";
 
 function formatarNumero(valor: unknown, casas = 3) {
@@ -17,17 +19,24 @@ function formatarMoeda(valor: unknown) {
 export default async function EstoquePage({
   searchParams,
 }: {
-  searchParams: Promise<{ depositoId?: string }>;
+  searchParams: Promise<{ depositoId?: string; saldo?: string; categoriaId?: string }>;
 }) {
-  const { depositoId } = await searchParams;
+  const { depositoId, saldo, categoriaId } = await searchParams;
   const session = await auth();
   const empresaId = session!.user.empresaId!;
+  const grupoId = session!.user.grupoId!;
   const mostrarCusto = podeVerCusto(session!.user.perfil);
 
-  const [depositos, itens] = await Promise.all([
+  const [depositos, categorias, itens] = await Promise.all([
     db.deposito.findMany({ where: { ativo: true, empresaId }, orderBy: { nome: "asc" } }),
+    db.categoria.findMany({ where: { ativo: true, grupoId }, orderBy: { nome: "asc" } }),
     db.produtoEstoque.findMany({
-      where: { empresaId, ...(depositoId ? { depositoId } : {}), quantidadeSaldo: { gt: 0 } },
+      where: {
+        empresaId,
+        ...(depositoId ? { depositoId } : {}),
+        quantidadeSaldo: saldo === "zero" ? 0 : { gt: 0 },
+        ...(categoriaId ? { produto: { categoriaId } } : {}),
+      },
       include: { produto: true, deposito: true },
       orderBy: { produto: { nome: "asc" } },
     }),
@@ -41,6 +50,10 @@ export default async function EstoquePage({
     produtoNome: i.produto.nome,
     depositoNome: i.deposito.nome,
     saldo: formatarNumero(i.quantidadeSaldo),
+    buscaTexto: [i.produto.nome, i.produto.sku, i.produto.marca, i.produto.modelo]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase(),
     ...(mostrarCusto
       ? {
           custoMedio: formatarMoeda(i.custoMedioAtual),
@@ -70,6 +83,8 @@ export default async function EstoquePage({
       )}
 
       <DepositoFilter depositos={depositos} />
+      <SaldoFilter />
+      <CategoriaFilter categorias={categorias} />
 
       <EstoqueLista
         itens={itensLista}

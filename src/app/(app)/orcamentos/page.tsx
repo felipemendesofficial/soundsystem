@@ -47,7 +47,7 @@ export default async function OrcamentosPage({
       ...(status ? { status: status as StatusOrcamento } : {}),
       ...(filtroPeriodo ? { criadoEm: filtroPeriodo } : {}),
     },
-    include: { itens: true },
+    include: { itens: { include: { produto: true } } },
     orderBy: { numero: "desc" },
   });
 
@@ -73,7 +73,9 @@ export default async function OrcamentosPage({
       valorVendaTotal: formatarMoeda(valorVendaTotal),
       valorCompraTotal: formatarMoeda(valorCompraTotal),
       taxaRevendaEfetiva: formatarPercentual(taxaRevendaEfetiva),
-      buscaTexto: [`orçamento #${o.numero}`, o.descricao ?? ""].join(" ").toLowerCase(),
+      buscaTexto: [`orçamento #${o.numero}`, o.descricao ?? "", ...o.itens.map((i) => i.produto.nome)]
+        .join(" ")
+        .toLowerCase(),
     };
   });
 
