@@ -2,6 +2,7 @@
 
 import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { signIn, auth } from "@/lib/auth";
 
 export type LoginState = {
@@ -23,5 +24,9 @@ export async function autenticar(_prevState: LoginState, formData: FormData): Pr
   }
 
   const session = await auth();
+  // Evita servir um payload de rota cacheado de antes do login (ex.: "/"
+  // ainda mostrando a tela de login) — mesmo problema já corrigido em
+  // selecionarEmpresa.
+  revalidatePath("/", "layout");
   redirect(session?.user.perfil === "master" ? "/admin" : "/");
 }
