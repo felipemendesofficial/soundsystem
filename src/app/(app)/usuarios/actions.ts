@@ -24,7 +24,7 @@ const baseSchema = {
   email: z.string().trim().email("Email inválido."),
   perfil: z.enum(["admin", "estoquista", "vendedor"]),
   depositoPadraoId: z.string().trim().optional(),
-  ativo: z.literal("on").optional(),
+  ativo: z.literal("on").nullish(),
 };
 
 const criarSchema = z.object({

@@ -94,6 +94,7 @@ async function obterVisaoGeralVendas(empresaId: string) {
       : null;
 
   const margemBrutaProdutos = valorProdutosAtual - custoProdutosAtual;
+  const margemPercentualProdutos = valorProdutosAtual > 0 ? (margemBrutaProdutos / valorProdutosAtual) * 100 : 0;
 
   // Serviços não têm custo rastreado no Kardex, então o valor de serviço inteiro
   // entra como margem na margem bruta total (produtos + serviços - custo dos produtos).
@@ -118,6 +119,7 @@ async function obterVisaoGeralVendas(empresaId: string) {
     valorProdutosAtual,
     valorServicosAtual,
     margemBrutaProdutos,
+    margemPercentualProdutos,
     margemBrutaTotal,
     margemPercentualTotal,
     percentualServicosNaMargem,
@@ -159,11 +161,10 @@ export default async function HomePage() {
 
   const atalhos = [
     {
-      href: "/lancamentos/novo",
-      titulo: "Novo Lançamento",
-      descricao: "Registrar entrada ou saída",
+      href: "/lancamentos",
+      titulo: "Lançamentos",
+      descricao: "Movimentações de entrada e saída",
       icon: Plus,
-      primary: true,
     },
     {
       href: "/estoque",
@@ -172,9 +173,9 @@ export default async function HomePage() {
       icon: ClipboardList,
     },
     {
-      href: "/ordens-servico/nova",
-      titulo: "Nova Ordem de Serviço",
-      descricao: "Serviços e produtos usados",
+      href: "/ordens-servico",
+      titulo: "Ordem de Serviço",
+      descricao: "Serviços e produtos por cliente",
       icon: Wrench,
     },
     ...(podeGerenciarOrcamento(perfil)
@@ -225,12 +226,7 @@ export default async function HomePage() {
             href={atalho.href}
             className="flex items-center gap-3.5 rounded-[14px] border border-border bg-card p-3.5 active:bg-accent"
           >
-            <div
-              className={cn(
-                "flex size-[42px] flex-none items-center justify-center rounded-[10px] bg-accent text-primary",
-                atalho.primary && "bg-brand-yellow text-brand-yellow-foreground"
-              )}
-            >
+            <div className="flex size-[42px] flex-none items-center justify-center rounded-[10px] bg-accent text-primary">
               <atalho.icon className="size-5" />
             </div>
             <div className="min-w-0 flex-1">
@@ -295,6 +291,9 @@ export default async function HomePage() {
                   {formatarMoeda(visaoGeralVendas.margemBrutaProdutos)}
                 </div>
                 <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  {visaoGeralVendas.margemPercentualProdutos.toFixed(0)}% da venda de produtos
+                </div>
+                <div className="text-[11px] text-muted-foreground">
                   {visaoGeralVendas.percentualProdutosNaMargem.toFixed(0)}% da margem total
                 </div>
               </div>

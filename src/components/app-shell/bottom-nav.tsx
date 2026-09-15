@@ -29,12 +29,13 @@ import { signOutAction } from "@/lib/actions/auth-actions";
 
 const NAV_ITEMS = [
   { href: "/", label: "Início", icon: Home },
-  { href: "/produtos", label: "Produtos", icon: Package },
-  { href: "/lancamentos/novo", label: "Movimentar", icon: Plus },
-  { href: "/estoque", label: "Estoque", icon: ClipboardList },
+  { href: "/ordens-servico/nova", label: "Nova OS", icon: Wrench },
+  { href: "/lancamentos/novo", label: "Novo Mvto", icon: Plus },
+  { href: "/orcamentos/novo", label: "Novo OC", icon: Calculator },
 ];
 
 const MAIS_ROUTES = [
+  "/produtos",
   "/fornecedores",
   "/clientes",
   "/depositos",
@@ -43,6 +44,7 @@ const MAIS_ROUTES = [
   "/servicos",
   "/ordens-servico",
   "/lancamentos",
+  "/estoque",
   "/usuarios",
 ];
 
@@ -128,6 +130,13 @@ export function BottomNav({
             </div>
             <div className="grid grid-cols-2 gap-2.5 overflow-y-auto px-[18px] pt-3 pb-4">
               <DialogClose
+                render={<Link href="/produtos" />}
+                className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
+              >
+                <Package className="size-[18px] flex-none text-primary" />
+                <span className="text-[13.5px] font-medium">Produtos</span>
+              </DialogClose>
+              <DialogClose
                 render={<Link href="/fornecedores" />}
                 className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
               >
@@ -182,6 +191,13 @@ export function BottomNav({
               >
                 <History className="size-[18px] flex-none text-primary" />
                 <span className="text-[13.5px] font-medium">Lançamentos</span>
+              </DialogClose>
+              <DialogClose
+                render={<Link href="/estoque" />}
+                className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
+              >
+                <ClipboardList className="size-[18px] flex-none text-primary" />
+                <span className="text-[13.5px] font-medium">Estoque</span>
               </DialogClose>
               {podeVerOrcamentos && (
                 <DialogClose
