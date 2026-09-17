@@ -19,6 +19,11 @@ async function obterVisaoGeralVendas(empresaId: string) {
       where: {
         empresaId,
         tipoMovimento: { in: ["venda", "os_saida"] },
+        // Venda/os_saida estornada nunca muda de tipoMovimento — só o
+        // estorno vira uma linha ajuste_entrada, que já não bate no filtro
+        // acima. Sem excluir estornadoEm aqui, a venda original continuava
+        // contando de qualquer jeito, sem nada pra compensar.
+        estornadoEm: null,
         dataMovimento: { gte: inicioMesAtual },
       },
       select: {
@@ -35,6 +40,7 @@ async function obterVisaoGeralVendas(empresaId: string) {
       where: {
         empresaId,
         tipoMovimento: { in: ["venda", "os_saida"] },
+        estornadoEm: null,
         dataMovimento: { gte: inicioMesAnterior, lt: inicioMesAtual },
       },
       select: { quantidade: true, precoVenda: true },
