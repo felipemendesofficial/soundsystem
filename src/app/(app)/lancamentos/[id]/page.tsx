@@ -86,6 +86,11 @@ export default async function DetalheLancamentoPage({ params }: { params: Promis
     const preco = ehEntrada ? Number(i.custoUnitario ?? 0) : Number(i.precoVenda ?? 0);
     return acc + Number(i.quantidade) * preco;
   }, 0);
+  // Só venda tem desconto/acréscimo — bruto = precoOriginal (nunca tocado
+  // pelo ajuste), líquido = precoVenda (o que de fato foi vendido/pro Kardex).
+  const totalBruto = ehVenda
+    ? lancamento.itens.reduce((acc, i) => acc + Number(i.quantidade) * Number(i.precoOriginal ?? i.precoVenda ?? 0), 0)
+    : total;
 
   return (
     <div className="space-y-6">
@@ -130,12 +135,17 @@ export default async function DetalheLancamentoPage({ params }: { params: Promis
             clienteId: lancamento.clienteId,
             vendedorId: lancamento.vendedorId,
             observacao: lancamento.observacao,
+            modoAjuste: lancamento.modoAjuste,
+            formatoAjuste: lancamento.formatoAjuste,
+            valorAjuste: lancamento.valorAjuste.toString(),
             itens: lancamento.itens.map((i) => ({
               produtoId: i.produtoId,
               label: `${i.produto.nome} — ${i.produto.sku}`,
               quantidade: i.quantidade.toString(),
               custoUnitario: i.custoUnitario?.toString() ?? "0",
-              precoVenda: i.precoVenda?.toString() ?? "",
+              // precoOriginal, nunca o precoVenda já líquido — ver
+              // desconto-ordem-servico.md na memória pra mais contexto.
+              precoVenda: i.precoOriginal?.toString() ?? "",
             })),
           }}
         />
@@ -180,23 +190,56 @@ export default async function DetalheLancamentoPage({ params }: { params: Promis
             <div className="space-y-2">
               <div className="text-[13px] font-medium uppercase text-muted-foreground">Itens</div>
               <ul className="space-y-2">
-                {lancamento.itens.map((i) => (
-                  <li key={i.id} className="flex items-center justify-between rounded-md border border-border p-3 text-sm">
-                    <span>
-                      {i.produto.nome} × {Number(i.quantidade)}
-                    </span>
-                    {(ehEntrada ? mostrarCusto : ehVenda) && (
-                      <span className="font-medium">
-                        {formatarMoeda(Number(i.quantidade) * Number(ehEntrada ? (i.custoUnitario ?? 0) : (i.precoVenda ?? 0)))}
-                      </span>
-                    )}
-                  </li>
-                ))}
+                {lancamento.itens.map((i) => {
+                  const qtd = Number(i.quantidade);
+                  const bruto = qtd * Number(i.precoOriginal ?? i.precoVenda ?? 0);
+                  const liquido = qtd * Number(ehEntrada ? (i.custoUnitario ?? 0) : (i.precoVenda ?? 0));
+                  const ajuste = ehVenda ? liquido - bruto : 0;
+                  return (
+                    <li key={i.id} className="rounded-md border border-border p-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span>
+                          {i.produto.nome} × {qtd}
+                        </span>
+                        {(ehEntrada ? mostrarCusto : ehVenda) && <span className="font-medium">{formatarMoeda(liquido)}</span>}
+                      </div>
+                      {ajuste !== 0 && (
+                        <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                          <span>Bruto: {formatarMoeda(bruto)}</span>
+                          <span>
+                            {ajuste < 0 ? "Desconto" : "Acréscimo"}: {ajuste < 0 ? "−" : "+"}
+                            {formatarMoeda(Math.abs(ajuste))}
+                          </span>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
 
             {(ehEntrada ? mostrarCusto : ehVenda) && (
-              <p className="mt-4 text-right text-base font-semibold">Total: {formatarMoeda(total)}</p>
+              <div className="mt-4 space-y-1 border-t border-border pt-3 text-sm">
+                {ehVenda && totalBruto !== total && (
+                  <>
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span>Bruto</span>
+                      <span>{formatarMoeda(totalBruto)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span>{lancamento.modoAjuste === "acrescimo" ? "Acréscimo" : "Desconto"}</span>
+                      <span>
+                        {lancamento.modoAjuste === "acrescimo" ? "+" : "−"}
+                        {formatarMoeda(Math.abs(totalBruto - total))}
+                      </span>
+                    </div>
+                  </>
+                )}
+                <div className="flex items-center justify-between text-base font-semibold">
+                  <span>{ehVenda ? "Líquido" : "Total"}</span>
+                  <span>{formatarMoeda(total)}</span>
+                </div>
+              </div>
             )}
           </div>
         </div>

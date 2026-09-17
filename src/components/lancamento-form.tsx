@@ -117,6 +117,9 @@ export function LancamentoForm({
     clienteId: string | null;
     vendedorId: string | null;
     observacao: string | null;
+    modoAjuste: ModoAjuste;
+    formatoAjuste: FormatoAjuste;
+    valorAjuste: string;
     itens: { produtoId: string; label: string; quantidade: string; custoUnitario: string; precoVenda: string }[];
   };
 }) {
@@ -126,6 +129,9 @@ export function LancamentoForm({
   const [state, formAction, pending] = useActionState(action, {});
   const [linhas, setLinhas] = useState<Linha[]>(
     () =>
+      // O input "Preço Venda" sempre segura o preço-base original digitado —
+      // defaultValues.itens[].precoVenda aqui já vem como precoOriginal do
+      // banco (ver page.tsx), nunca o preço líquido já descontado.
       defaultValues?.itens.map((i) => ({
         key: novaChave(),
         produto: { id: i.produtoId, label: i.label },
@@ -144,9 +150,11 @@ export function LancamentoForm({
     defaultValues?.depositoOrigemId ?? depositoPadraoId ?? ""
   );
   const [tabelaPrecoId, setTabelaPrecoId] = useState("");
-  const [modoAjuste, setModoAjuste] = useState<ModoAjuste>("nenhum");
-  const [formatoAjuste, setFormatoAjuste] = useState<FormatoAjuste>("percentual");
-  const [valorAjuste, setValorAjuste] = useState("");
+  const [modoAjuste, setModoAjuste] = useState<ModoAjuste>(defaultValues?.modoAjuste ?? "nenhum");
+  const [formatoAjuste, setFormatoAjuste] = useState<FormatoAjuste>(defaultValues?.formatoAjuste ?? "percentual");
+  const [valorAjuste, setValorAjuste] = useState(
+    defaultValues?.valorAjuste && Number(defaultValues.valorAjuste) > 0 ? defaultValues.valorAjuste : ""
+  );
 
   const tiposItems = Object.fromEntries(tiposDisponiveis.map((tipo) => [tipo, TIPOS_LABEL[tipo]]));
   const depositosItems = Object.fromEntries(depositos.map((d) => [d.id, d.label]));
@@ -198,9 +206,10 @@ export function LancamentoForm({
 
   const linhasComProduto = linhas.filter((l) => l.produto !== null);
 
-  // Desconto/acréscimo total, redistribuído proporcionalmente entre os itens
-  // — o preço declarado em cada linha continua editável e visível; o "preço
-  // final" abaixo é só quem realmente vai no envio.
+  // Desconto/acréscimo total, só uma prévia pro usuário — quem decide de
+  // verdade é o server, recalculando a partir de precoOriginal +
+  // modoAjuste/formatoAjuste/valorAjuste enviados (nunca confiamos num preço
+  // final computado no client).
   const resultadoAjuste = calcularAjusteTotal(
     linhasComProduto.map((l) => ({ quantidade: Number(l.quantidade) || 0, precoDeclarado: Number(l.precoVenda) || 0 })),
     { modo: modoAjuste, formato: formatoAjuste, valor: Number(valorAjuste) || 0 }
@@ -212,18 +221,11 @@ export function LancamentoForm({
   );
 
   const itensSerializados = JSON.stringify(
-    linhasComProduto.map((l, idx) => ({
+    linhasComProduto.map((l) => ({
       produtoId: l.produto!.id,
       quantidade: l.quantidade,
       ...(ehEntrada ? { custoUnitario: l.custoUnitario } : {}),
-      ...(ehVenda
-        ? {
-            precoVenda:
-              modoAjuste !== "nenhum"
-                ? String(resultadoAjuste.precosFinais[idx])
-                : l.precoVenda || undefined,
-          }
-        : {}),
+      ...(ehVenda ? { precoOriginal: l.precoVenda || undefined } : {}),
     }))
   );
 
@@ -236,6 +238,9 @@ export function LancamentoForm({
     <form id="lancamento-form" action={formAction} className="max-w-lg space-y-6">
       <input type="hidden" name="tipo" value={tipoMovimento} />
       <input type="hidden" name="itens" value={itensSerializados} />
+      <input type="hidden" name="modoAjuste" value={modoAjuste} />
+      <input type="hidden" name="formatoAjuste" value={formatoAjuste} />
+      <input type="hidden" name="valorAjuste" value={valorAjuste || "0"} />
 
       <div className="space-y-2">
         <Label htmlFor="tipoMovimentoSelect" className={labelClass}>Tipo de Lançamento</Label>

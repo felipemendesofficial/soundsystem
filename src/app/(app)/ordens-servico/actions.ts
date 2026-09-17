@@ -14,6 +14,7 @@ import {
   SaldoInsuficienteError,
 } from "@/lib/kardex";
 import { normalizarTexto } from "@/lib/texto";
+import { calcularAjusteTotal } from "@/lib/ajuste-total";
 
 export type OrdemServicoFormState = { erro?: string };
 
@@ -21,7 +22,7 @@ const itemSchema = z.object({
   tipo: z.enum(["produto", "servico"]),
   itemId: z.string().min(1),
   quantidade: z.coerce.number().positive(),
-  precoUnitario: z.coerce.number().nonnegative(),
+  precoOriginal: z.coerce.number().nonnegative(),
 });
 
 const schema = z.object({
@@ -29,6 +30,9 @@ const schema = z.object({
   depositoId: z.string().min(1, "Selecione o depósito."),
   vendedorId: z.string().min(1, "Selecione o vendedor."),
   observacao: z.string().trim().transform(normalizarTexto).optional(),
+  modoAjuste: z.enum(["nenhum", "desconto", "acrescimo"]),
+  formatoAjuste: z.enum(["percentual", "valor"]),
+  valorAjuste: z.coerce.number().nonnegative(),
   itens: z
     .string()
     .transform((valor, ctx) => {
@@ -48,6 +52,25 @@ const schema = z.object({
     }),
 });
 
+/**
+ * Recalcula o preço líquido de cada item a partir do precoOriginal (nunca
+ * tocado pelo desconto) + a configuração de ajuste — nunca confiamos num
+ * preço final computado no client. Preserva a ordem produtos-depois-serviços
+ * de `parsed.data.itens` em cada lista de saída, casando com
+ * `resultadoAjuste.precosFinais` pelo mesmo índice usado no cálculo.
+ */
+function calcularItensComPrecoLiquido(dados: z.infer<typeof schema>) {
+  const resultadoAjuste = calcularAjusteTotal(
+    dados.itens.map((i) => ({ quantidade: i.quantidade, precoDeclarado: i.precoOriginal })),
+    { modo: dados.modoAjuste, formato: dados.formatoAjuste, valor: dados.valorAjuste }
+  );
+
+  return dados.itens.map((item, idx) => ({
+    ...item,
+    precoUnitario: resultadoAjuste.precosFinais[idx],
+  }));
+}
+
 async function exigirPermissao() {
   const session = await auth();
   if (!session?.user) return { erro: "Não autenticado." } as const;
@@ -63,6 +86,9 @@ function toData(formData: FormData) {
     depositoId: formData.get("depositoId"),
     vendedorId: formData.get("vendedorId"),
     observacao: formData.get("observacao"),
+    modoAjuste: formData.get("modoAjuste"),
+    formatoAjuste: formData.get("formatoAjuste"),
+    valorAjuste: formData.get("valorAjuste"),
     itens: formData.get("itens"),
   });
 }
@@ -78,6 +104,7 @@ export async function criarOrdemServico(
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
   const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
+  const itensComPrecoLiquido = calcularItensComPrecoLiquido(parsed.data);
   const os = await db.ordemServico.create({
     data: {
       clienteId: parsed.data.clienteId,
@@ -87,15 +114,28 @@ export async function criarOrdemServico(
       vendedorId: parsed.data.vendedorId,
       usuarioId: permissao.session.user.id,
       observacao: parsed.data.observacao || null,
+      modoAjuste: parsed.data.modoAjuste,
+      formatoAjuste: parsed.data.formatoAjuste,
+      valorAjuste: parsed.data.valorAjuste,
       itensProduto: {
-        create: parsed.data.itens
+        create: itensComPrecoLiquido
           .filter((i) => i.tipo === "produto")
-          .map((i) => ({ produtoId: i.itemId, quantidade: i.quantidade, precoUnitario: i.precoUnitario })),
+          .map((i) => ({
+            produtoId: i.itemId,
+            quantidade: i.quantidade,
+            precoOriginal: i.precoOriginal,
+            precoUnitario: i.precoUnitario,
+          })),
       },
       itensServico: {
-        create: parsed.data.itens
+        create: itensComPrecoLiquido
           .filter((i) => i.tipo === "servico")
-          .map((i) => ({ servicoId: i.itemId, quantidade: i.quantidade, precoUnitario: i.precoUnitario })),
+          .map((i) => ({
+            servicoId: i.itemId,
+            quantidade: i.quantidade,
+            precoOriginal: i.precoOriginal,
+            precoUnitario: i.precoUnitario,
+          })),
       },
     },
   });
@@ -122,6 +162,7 @@ export async function atualizarOrdemServico(
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
   const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
+  const itensComPrecoLiquido = calcularItensComPrecoLiquido(parsed.data);
   await db.$transaction(async (tx) => {
     await tx.itemOrdemServicoProduto.deleteMany({ where: { ordemServicoId: id } });
     await tx.itemOrdemServicoServico.deleteMany({ where: { ordemServicoId: id } });
@@ -134,15 +175,28 @@ export async function atualizarOrdemServico(
         grupoId,
         vendedorId: parsed.data.vendedorId,
         observacao: parsed.data.observacao || null,
+        modoAjuste: parsed.data.modoAjuste,
+        formatoAjuste: parsed.data.formatoAjuste,
+        valorAjuste: parsed.data.valorAjuste,
         itensProduto: {
-          create: parsed.data.itens
+          create: itensComPrecoLiquido
             .filter((i) => i.tipo === "produto")
-            .map((i) => ({ produtoId: i.itemId, quantidade: i.quantidade, precoUnitario: i.precoUnitario })),
+            .map((i) => ({
+              produtoId: i.itemId,
+              quantidade: i.quantidade,
+              precoOriginal: i.precoOriginal,
+              precoUnitario: i.precoUnitario,
+            })),
         },
         itensServico: {
-          create: parsed.data.itens
+          create: itensComPrecoLiquido
             .filter((i) => i.tipo === "servico")
-            .map((i) => ({ servicoId: i.itemId, quantidade: i.quantidade, precoUnitario: i.precoUnitario })),
+            .map((i) => ({
+              servicoId: i.itemId,
+              quantidade: i.quantidade,
+              precoOriginal: i.precoOriginal,
+              precoUnitario: i.precoUnitario,
+            })),
         },
       },
     });

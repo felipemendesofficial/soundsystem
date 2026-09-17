@@ -16,6 +16,7 @@ import {
 } from "@/lib/kardex";
 import { podeLancarMovimentacao } from "@/lib/permissions";
 import { normalizarTexto } from "@/lib/texto";
+import { calcularAjusteTotal } from "@/lib/ajuste-total";
 import type { TipoLancamento } from "@/generated/prisma/client";
 
 export type LancamentoFormState = { erro?: string };
@@ -77,14 +78,37 @@ const saidaSchema = z.object({
   clienteId: z.string().trim().optional(),
   vendedorId: z.string().trim().optional(),
   observacao: z.string().trim().transform(normalizarTexto).optional(),
+  modoAjuste: z.enum(["nenhum", "desconto", "acrescimo"]),
+  formatoAjuste: z.enum(["percentual", "valor"]),
+  valorAjuste: z.coerce.number().nonnegative(),
   itens: parseItens(
     z.object({
       produtoId: z.string().min(1, "Selecione o produto."),
       quantidade: z.coerce.number().positive("Quantidade deve ser maior que zero."),
-      precoVenda: z.coerce.number().nonnegative("Preço não pode ser negativo.").optional(),
+      precoOriginal: z.coerce.number().nonnegative("Preço não pode ser negativo.").optional(),
     })
   ),
 });
+
+/**
+ * Recalcula o precoVenda líquido de cada item de saída a partir do
+ * precoOriginal (nunca tocado pelo desconto) + a configuração de ajuste —
+ * nunca confiamos num preço final computado no client. Pra tipos de saída
+ * sem desconto (tudo exceto venda), modoAjuste vem sempre "nenhum" do form,
+ * o que faz calcularAjusteTotal devolver o próprio precoOriginal sem alterar
+ * nada — seguro rodar incondicionalmente.
+ */
+function calcularItensSaidaComPrecoLiquido(dados: z.infer<typeof saidaSchema>) {
+  const resultadoAjuste = calcularAjusteTotal(
+    dados.itens.map((i) => ({ quantidade: i.quantidade, precoDeclarado: i.precoOriginal ?? 0 })),
+    { modo: dados.modoAjuste, formato: dados.formatoAjuste, valor: dados.valorAjuste }
+  );
+
+  return dados.itens.map((item, idx) => ({
+    ...item,
+    precoVenda: item.precoOriginal !== undefined ? resultadoAjuste.precosFinais[idx] : undefined,
+  }));
+}
 
 async function exigirPermissao(tipo: string) {
   const session = await auth();
@@ -98,12 +122,13 @@ async function exigirPermissao(tipo: string) {
   return { session } as const;
 }
 
-function toItensCreate(tipo: TipoLancamento, itens: { produtoId: string; quantidade: number; custoUnitario?: number; precoVenda?: number }[]) {
+// Só pra entrada/transferência — saída usa calcularItensSaidaComPrecoLiquido,
+// que já resolve precoOriginal/precoVenda direto.
+function toItensCreate(tipo: TipoLancamento, itens: { produtoId: string; quantidade: number; custoUnitario?: number }[]) {
   return itens.map((item) => ({
     produtoId: item.produtoId,
     quantidade: item.quantidade,
     custoUnitario: ENTRADA_TIPOS.has(tipo) ? item.custoUnitario : undefined,
-    precoVenda: SAIDA_TIPOS.has(tipo) ? item.precoVenda : undefined,
   }));
 }
 
@@ -167,6 +192,9 @@ export async function criarLancamento(_prev: LancamentoFormState, formData: Form
       clienteId: formData.get("clienteId") || undefined,
       vendedorId: formData.get("vendedorId") || undefined,
       observacao: formData.get("observacao"),
+      modoAjuste: formData.get("modoAjuste"),
+      formatoAjuste: formData.get("formatoAjuste"),
+      valorAjuste: formData.get("valorAjuste"),
       itens: formData.get("itens"),
     });
     if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
@@ -183,7 +211,10 @@ export async function criarLancamento(_prev: LancamentoFormState, formData: Form
         vendedorId: parsed.data.vendedorId || null,
         usuarioId: session.user.id,
         observacao: parsed.data.observacao || null,
-        itens: { create: toItensCreate(tipo, parsed.data.itens) },
+        modoAjuste: parsed.data.modoAjuste,
+        formatoAjuste: parsed.data.formatoAjuste,
+        valorAjuste: parsed.data.valorAjuste,
+        itens: { create: calcularItensSaidaComPrecoLiquido(parsed.data) },
       },
     });
     lancamentoId = lancamento.id;
@@ -217,7 +248,7 @@ export async function atualizarLancamento(
   if (atual.lancamento.tipo !== tipo) return { erro: "O tipo do lançamento não pode ser alterado." };
 
   let dadosHeader: Record<string, unknown>;
-  let itensCreate: ReturnType<typeof toItensCreate>;
+  let itensCreate: ReturnType<typeof toItensCreate> | ReturnType<typeof calcularItensSaidaComPrecoLiquido>;
 
   if (tipo === "transferencia") {
     const parsed = transferenciaSchema.safeParse({
@@ -259,6 +290,9 @@ export async function atualizarLancamento(
       clienteId: formData.get("clienteId") || undefined,
       vendedorId: formData.get("vendedorId") || undefined,
       observacao: formData.get("observacao"),
+      modoAjuste: formData.get("modoAjuste"),
+      formatoAjuste: formData.get("formatoAjuste"),
+      valorAjuste: formData.get("valorAjuste"),
       itens: formData.get("itens"),
     });
     if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
@@ -271,8 +305,11 @@ export async function atualizarLancamento(
       clienteId: parsed.data.clienteId || null,
       vendedorId: parsed.data.vendedorId || null,
       observacao: parsed.data.observacao || null,
+      modoAjuste: parsed.data.modoAjuste,
+      formatoAjuste: parsed.data.formatoAjuste,
+      valorAjuste: parsed.data.valorAjuste,
     };
-    itensCreate = toItensCreate(tipo, parsed.data.itens);
+    itensCreate = calcularItensSaidaComPrecoLiquido(parsed.data);
   } else {
     return { erro: "Tipo de lançamento inválido." };
   }

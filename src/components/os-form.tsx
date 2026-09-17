@@ -31,7 +31,10 @@ type Linha = {
   tipo: "produto" | "servico";
   item: Item | null;
   quantidade: string;
-  precoUnitario: string;
+  // Preço-base digitado — nunca sobrescrito pelo desconto/acréscimo (ver
+  // schema.prisma#ItemOrdemServicoProduto.precoOriginal). "Preço final" é só
+  // uma prévia calculada, exibida por linha, nunca guardada aqui.
+  precoOriginal: string;
 };
 
 type Action = (prevState: OrdemServicoFormState, formData: FormData) => Promise<OrdemServicoFormState>;
@@ -81,12 +84,15 @@ export function OSForm({
     depositoId: string;
     vendedorId: string;
     observacao: string | null;
+    modoAjuste: ModoAjuste;
+    formatoAjuste: FormatoAjuste;
+    valorAjuste: string;
     itens: {
       tipo: "produto" | "servico";
       itemId: string;
       label: string;
       quantidade: string;
-      precoUnitario: string;
+      precoOriginal: string;
     }[];
   };
 }) {
@@ -97,7 +103,7 @@ export function OSForm({
       tipo: i.tipo,
       item: { id: i.itemId, label: i.label },
       quantidade: i.quantidade,
-      precoUnitario: i.precoUnitario,
+      precoOriginal: i.precoOriginal,
     }))
   );
   // "" (nunca undefined) mesmo sem seleção — Select vira controlado assim que
@@ -109,9 +115,11 @@ export function OSForm({
   const [tabelaPrecoId, setTabelaPrecoId] = useState(
     () => clientes.find((c) => c.id === defaultValues?.clienteId)?.tabelaPrecoPadraoId ?? ""
   );
-  const [modoAjuste, setModoAjuste] = useState<ModoAjuste>("nenhum");
-  const [formatoAjuste, setFormatoAjuste] = useState<FormatoAjuste>("percentual");
-  const [valorAjuste, setValorAjuste] = useState("");
+  const [modoAjuste, setModoAjuste] = useState<ModoAjuste>(defaultValues?.modoAjuste ?? "nenhum");
+  const [formatoAjuste, setFormatoAjuste] = useState<FormatoAjuste>(defaultValues?.formatoAjuste ?? "percentual");
+  const [valorAjuste, setValorAjuste] = useState(
+    defaultValues?.valorAjuste && Number(defaultValues.valorAjuste) > 0 ? defaultValues.valorAjuste : ""
+  );
 
   const clientesItems = Object.fromEntries(clientes.map((c) => [c.id, c.label]));
   const vendedoresItems = Object.fromEntries(vendedores.map((v) => [v.id, v.label]));
@@ -138,7 +146,7 @@ export function OSForm({
     // Novo item entra no topo da lista, ao lado dos botões "+ Produto/Serviço"
     // — assim fica visível sem rolar a tela, útil ao lançar vários itens seguidos.
     setLinhas((atual) => [
-      { key: novaChave(), tipo, item: null, quantidade: "1", precoUnitario: "0" },
+      { key: novaChave(), tipo, item: null, quantidade: "1", precoOriginal: "0" },
       ...atual,
     ]);
   }
@@ -154,20 +162,22 @@ export function OSForm({
   const linhasComItem = linhas.filter((l) => l.item !== null);
 
   // Desconto/acréscimo total da OS (produtos + serviços juntos), redistribuído
-  // proporcionalmente entre os itens — mesma lógica do Lançamento. O
-  // preço declarado em cada linha continua editável; "preço final" é quem
-  // realmente vai no envio.
+  // proporcionalmente entre os itens — mesma lógica do Lançamento. Isso aqui
+  // é só uma prévia pro usuário ver o "preço final" por linha; quem decide de
+  // verdade é o server, recalculando a partir de precoOriginal + do
+  // modoAjuste/formatoAjuste/valorAjuste enviados — nunca confiamos no preço
+  // final calculado no client.
   const resultadoAjuste = calcularAjusteTotal(
-    linhasComItem.map((l) => ({ quantidade: Number(l.quantidade) || 0, precoDeclarado: Number(l.precoUnitario) || 0 })),
+    linhasComItem.map((l) => ({ quantidade: Number(l.quantidade) || 0, precoDeclarado: Number(l.precoOriginal) || 0 })),
     { modo: modoAjuste, formato: formatoAjuste, valor: Number(valorAjuste) || 0 }
   );
 
   const itensSerializados = JSON.stringify(
-    linhasComItem.map((l, idx) => ({
+    linhasComItem.map((l) => ({
       tipo: l.tipo,
       itemId: l.item!.id,
       quantidade: l.quantidade,
-      precoUnitario: modoAjuste !== "nenhum" ? String(resultadoAjuste.precosFinais[idx]) : l.precoUnitario,
+      precoOriginal: l.precoOriginal,
     }))
   );
 
@@ -179,6 +189,9 @@ export function OSForm({
     <>
     <form id="os-form" action={formAction} className="max-w-lg space-y-6">
       <input type="hidden" name="itens" value={itensSerializados} />
+      <input type="hidden" name="modoAjuste" value={modoAjuste} />
+      <input type="hidden" name="formatoAjuste" value={formatoAjuste} />
+      <input type="hidden" name="valorAjuste" value={valorAjuste || "0"} />
 
       <div className="space-y-2">
         <Label htmlFor="clienteId" className={labelClass}>Cliente</Label>
@@ -314,8 +327,8 @@ export function OSForm({
                   onValueChange={(item: Item | null) => {
                     atualizarLinha(linha.key, {
                       item,
-                      precoUnitario: !item
-                        ? linha.precoUnitario
+                      precoOriginal: !item
+                        ? linha.precoOriginal
                         : linha.tipo === "servico"
                           ? String((item as ServicoItem).precoPadrao)
                           : sugerirPreco(item.id),
@@ -360,8 +373,8 @@ export function OSForm({
                       type="number"
                       step="0.01"
                       min="0"
-                      value={linha.precoUnitario}
-                      onChange={(e) => atualizarLinha(linha.key, { precoUnitario: e.target.value })}
+                      value={linha.precoOriginal}
+                      onChange={(e) => atualizarLinha(linha.key, { precoOriginal: e.target.value })}
                       className="h-10 bg-card"
                     />
                   </div>

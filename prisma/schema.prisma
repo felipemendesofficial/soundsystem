@@ -55,6 +55,22 @@ enum StatusOS {
   cancelada
 }
 
+/// Desconto/acréscimo total de uma Ordem de Serviço — ver
+/// src/lib/ajuste-total.ts. Persistido no cabeçalho da OS (não por item)
+/// pra sobreviver a reaberturas/edições: sem isso, editar uma OS recarregava
+/// o preço já líquido como se fosse o original e reaplicar um desconto
+/// compunha em cima do anterior.
+enum ModoAjuste {
+  nenhum
+  desconto
+  acrescimo
+}
+
+enum FormatoAjuste {
+  percentual
+  valor
+}
+
 enum StatusOrcamento {
   aberto
   fechado
@@ -455,6 +471,15 @@ model Lancamento {
   fechadoEm         DateTime?        @map("fechado_em")
   reabertoEm        DateTime?        @map("reaberto_em")
 
+  // Desconto/Acréscimo só se aplica a lançamentos de venda — nos demais
+  // tipos fica sempre no default (nenhum). Mesmo par de enums e mesmo motivo
+  // de existir do desconto da Ordem de Serviço (ver ModoAjuste acima): sem
+  // isso, o preço original se perdia e reabrir pra editar compunha desconto
+  // em cima de desconto.
+  modoAjuste    ModoAjuste    @default(nenhum) @map("modo_ajuste")
+  formatoAjuste FormatoAjuste @default(percentual) @map("formato_ajuste")
+  valorAjuste   Decimal       @default(0) @map("valor_ajuste") @db.Decimal(14, 2)
+
   deposito        Deposito?        @relation("LancamentoDeposito", fields: [depositoId], references: [id])
   depositoOrigem  Deposito?        @relation("LancamentoDepositoOrigem", fields: [depositoOrigemId], references: [id])
   depositoDestino Deposito?        @relation("LancamentoDepositoDestino", fields: [depositoDestinoId], references: [id])
@@ -477,6 +502,11 @@ model ItemLancamento {
   produtoId     String   @map("produto_id")
   quantidade    Decimal  @db.Decimal(14, 3)
   custoUnitario Decimal? @map("custo_unitario") @db.Decimal(14, 4)
+  // Preço-base digitado numa venda, nunca tocado pelo desconto/acréscimo do
+  // Lançamento — null nos tipos sem desconto (mesma nulidade de precoVenda).
+  precoOriginal Decimal? @map("preco_original") @db.Decimal(14, 2)
+  // Preço líquido (com o ajuste já aplicado) — é este que vai pro Kardex
+  // como precoVenda na finalização do lançamento (ver finalizarLancamento).
   precoVenda    Decimal? @map("preco_venda") @db.Decimal(14, 2)
 
   lancamento Lancamento @relation(fields: [lancamentoId], references: [id], onDelete: Cascade)
@@ -514,6 +544,12 @@ model OrdemServico {
   criadaEm    DateTime  @default(now()) @map("criada_em")
   concluidaEm DateTime? @map("concluida_em")
 
+  // Configuração do desconto/acréscimo, congelada aqui pra poder ser
+  // recarregada e alterada numa edição posterior (ver enum ModoAjuste acima).
+  modoAjuste    ModoAjuste    @default(nenhum) @map("modo_ajuste")
+  formatoAjuste FormatoAjuste @default(percentual) @map("formato_ajuste")
+  valorAjuste   Decimal       @default(0) @map("valor_ajuste") @db.Decimal(14, 2)
+
   cliente  Cliente          @relation(fields: [clienteId], references: [id])
   deposito Deposito         @relation(fields: [depositoId], references: [id])
   empresa  Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
@@ -534,6 +570,10 @@ model ItemOrdemServicoProduto {
   ordemServicoId String  @map("ordem_servico_id")
   produtoId      String  @map("produto_id")
   quantidade     Decimal @db.Decimal(14, 3)
+  // Preço-base digitado, nunca tocado pelo desconto/acréscimo da OS.
+  precoOriginal  Decimal @map("preco_original") @db.Decimal(14, 2)
+  // Preço líquido (com o ajuste da OS já aplicado) — é este que vai pro
+  // Kardex como precoVenda na conclusão da OS (ver concluirOrdemServico).
   precoUnitario  Decimal @map("preco_unitario") @db.Decimal(14, 2)
 
   ordemServico OrdemServico @relation(fields: [ordemServicoId], references: [id], onDelete: Cascade)
@@ -547,6 +587,7 @@ model ItemOrdemServicoServico {
   ordemServicoId String  @map("ordem_servico_id")
   servicoId      String  @map("servico_id")
   quantidade     Decimal @default(1) @db.Decimal(14, 3)
+  precoOriginal  Decimal @map("preco_original") @db.Decimal(14, 2)
   precoUnitario  Decimal @map("preco_unitario") @db.Decimal(14, 2)
 
   ordemServico OrdemServico @relation(fields: [ordemServicoId], references: [id], onDelete: Cascade)
