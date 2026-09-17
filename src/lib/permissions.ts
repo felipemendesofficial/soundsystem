@@ -45,3 +45,12 @@ export function podeGerenciarTabelaPreco(perfil: Perfil): boolean {
 export function podeGerenciarVendedor(perfil: Perfil): boolean {
   return perfil === "admin" || perfil === "estoquista";
 }
+
+/**
+ * Módulo financeiro (contas bancárias, plano de contas, lançamentos) —
+ * mesma fronteira de `podeGerenciarUsuarios`: configuração sensível,
+ * admin-only, nem o perfil estoquista mexe aqui.
+ */
+export function podeGerenciarFinanceiro(perfil: Perfil): boolean {
+  return perfil === "admin";
+}

@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { podeGerenciarPlataforma } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { signOutAction } from "@/lib/actions/auth-actions";
+import { AdminNav } from "@/components/app-shell/admin-nav";
 import { Boxes } from "lucide-react";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -27,6 +28,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             </Button>
           </form>
         </div>
+        <AdminNav />
       </div>
       <main className="flex-1 px-[18px] py-[18px]">{children}</main>
     </div>

@@ -21,6 +21,7 @@ import {
   BadgePercent,
   History,
   LogOut,
+  Landmark,
 } from "lucide-react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { cn } from "@/lib/utils";
@@ -78,11 +79,13 @@ export function BottomNav({
   podeVerOrcamentos,
   podeVerTabelaPrecos,
   podeVerVendedores,
+  podeVerFinanceiro,
 }: {
   isAdmin: boolean;
   podeVerOrcamentos: boolean;
   podeVerTabelaPrecos: boolean;
   podeVerVendedores: boolean;
+  podeVerFinanceiro: boolean;
 }) {
   const pathname = usePathname();
   const mais = [
@@ -91,6 +94,18 @@ export function BottomNav({
     ...(podeVerTabelaPrecos ? ["/tabela-precos"] : []),
     ...(podeVerVendedores ? ["/vendedores"] : []),
     ...(isAdmin ? ["/usuarios"] : []),
+    ...(podeVerFinanceiro
+      ? [
+          "/financeiro",
+          "/contas-financeiras",
+          "/portadores",
+          "/planos-financeiros",
+          "/centros-custo",
+          "/processos",
+          "/lancamentos-financeiros",
+          "/fechamento-diario",
+        ]
+      : []),
   ];
   const maisAtivo = mais.some((rota) => pathname.startsWith(rota));
 
@@ -233,6 +248,15 @@ export function BottomNav({
                 >
                   <UserCog className="size-[18px] flex-none text-primary" />
                   <span className="text-[13.5px] font-medium">Usuários</span>
+                </DialogClose>
+              )}
+              {podeVerFinanceiro && (
+                <DialogClose
+                  render={<Link href="/financeiro" />}
+                  className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
+                >
+                  <Landmark className="size-[18px] flex-none text-primary" />
+                  <span className="text-[13.5px] font-medium">Financeiro</span>
                 </DialogClose>
               )}
               <DialogClose

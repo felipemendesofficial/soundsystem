@@ -105,6 +105,40 @@ async function main() {
     });
   }
 
+  // Alíneas de Devolução de Cheque (tabela Bacen) — módulo financeiro.
+  const alineasDevolucaoCheque = [
+    { codigo: "11", descricao: "Cheque sem fundos – 1ª apresentação" },
+    { codigo: "12", descricao: "Cheque sem fundos – 2ª apresentação" },
+    { codigo: "13", descricao: "Conta encerrada" },
+    { codigo: "14", descricao: "Prática espúria (emissão de múltiplos cheques de baixo valor sem fundos)" },
+    { codigo: "20", descricao: "Folha de cheque cancelada por solicitação do correntista" },
+    { codigo: "21", descricao: "Contra-ordem (revogação) ou oposição (sustação) ao pagamento pelo emitente" },
+    { codigo: "22", descricao: "Divergência ou insuficiência de assinatura" },
+    { codigo: "23", descricao: "Cheque de órgão da administração pública em desacordo com normas" },
+    { codigo: "24", descricao: "Bloqueio judicial ou determinação do Banco Central" },
+    { codigo: "25", descricao: "Cancelamento de talonário pelo banco sacado" },
+    { codigo: "26", descricao: "Inoperância temporária de transporte" },
+    { codigo: "27", descricao: "Feriado municipal não previsto" },
+    { codigo: "28", descricao: "Contra-ordem ou oposição ocasionada por furto ou roubo" },
+    { codigo: "31", descricao: "Erros formais (como falta de data, valor por extenso incorreto ou rasura)" },
+    { codigo: "33", descricao: "Divergência de endosso" },
+    { codigo: "34", descricao: "Cheque apresentado por estabelecimento não inscrito no compensador" },
+    { codigo: "35", descricao: "Cheque não cruzado quando exigido" },
+    { codigo: "37", descricao: "Registro inconsistente ou erro de processamento operacional" },
+    { codigo: "44", descricao: "Cheque prescrito (apresentado após o prazo legal)" },
+    { codigo: "45", descricao: "Cheque emitido por entidade obrigada a emitir ordem bancária ou com oposição de furto/roubo" },
+    { codigo: "48", descricao: "Cheque de valor superior a R$ 100,00 sem a identificação do beneficiário" },
+    { codigo: "49", descricao: "Remessa nula (reapresentação indevida de cheque que não deveria retornar ao sistema de compensação)" },
+  ];
+
+  for (const alinea of alineasDevolucaoCheque) {
+    await db.alineaDevolucaoCheque.upsert({
+      where: { codigo: alinea.codigo },
+      update: { descricao: alinea.descricao },
+      create: alinea,
+    });
+  }
+
   console.log("Seed concluído.");
   console.log(`Login master:     ${emailMaster} / ${senhaMaster}`);
   console.log("Login admin:      admin@exemplo.com / admin123");

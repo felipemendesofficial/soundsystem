@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
+  podeGerenciarFinanceiro,
   podeGerenciarOrcamento,
   podeGerenciarTabelaPreco,
   podeGerenciarUsuarios,
@@ -19,6 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const podeVerOrcamentos = podeGerenciarOrcamento(session.user.perfil);
   const podeVerTabelaPrecos = podeGerenciarTabelaPreco(session.user.perfil);
   const podeVerVendedores = podeGerenciarVendedor(session.user.perfil);
+  const podeVerFinanceiro = podeGerenciarFinanceiro(session.user.perfil);
 
   const empresa = await db.empresa.findUnique({
     where: { id: session.user.empresaId },
@@ -39,6 +41,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         podeVerOrcamentos={podeVerOrcamentos}
         podeVerTabelaPrecos={podeVerTabelaPrecos}
         podeVerVendedores={podeVerVendedores}
+        podeVerFinanceiro={podeVerFinanceiro}
       />
     </div>
   );
