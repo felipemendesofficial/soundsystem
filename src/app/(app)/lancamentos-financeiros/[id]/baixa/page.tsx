@@ -22,11 +22,15 @@ export default async function BaixaLancamentoPage({ params }: { params: Promise<
   if (lancamento.status !== "aberto") redirect(`/lancamentos-financeiros/${id}`);
   if (lancamento.natureza === "prevista") redirect(`/lancamentos-financeiros/${id}`);
 
-  const [contasCadastradas, terceiros, parametro] = await Promise.all([
+  const [contasCadastradas, terceiro, parametro] = await Promise.all([
     db.contaFinanceira.findMany({ where: { empresaId, ativo: true }, orderBy: { nome: "asc" } }),
     lancamento.tipo === "receita"
-      ? db.cliente.findMany({ where: { grupoId }, orderBy: { nome: "asc" } })
-      : db.fornecedor.findMany({ where: { grupoId }, orderBy: { nome: "asc" } }),
+      ? lancamento.clienteId
+        ? db.cliente.findFirst({ where: { id: lancamento.clienteId, grupoId } })
+        : null
+      : lancamento.fornecedorId
+        ? db.fornecedor.findFirst({ where: { id: lancamento.fornecedorId, grupoId } })
+        : null,
     db.parametroFinanceiro.findUnique({ where: { empresaId } }),
   ]);
 
@@ -57,8 +61,7 @@ export default async function BaixaLancamentoPage({ params }: { params: Promise<
         dataVencimento={lancamento.dataVencimento.toISOString().slice(0, 10)}
         moraMes={lancamento.moraMes ? Number(lancamento.moraMes) : null}
         tipoLancamento={lancamento.tipo}
-        terceiros={terceiros.map((t) => ({ id: t.id, label: t.nome }))}
-        terceiroPadraoId={lancamento.tipo === "receita" ? lancamento.clienteId : lancamento.fornecedorId}
+        terceiroLabel={terceiro?.nome ?? null}
         percentualMulta={parametro?.percentualMultaPadrao ? Number(parametro.percentualMultaPadrao) : null}
       />
     </div>

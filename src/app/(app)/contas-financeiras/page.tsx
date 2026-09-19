@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { podeGerenciarFinanceiro } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { ContasFinanceirasLista, type ItemContaFinanceira } from "@/components/contas-financeiras-lista";
+import { obterResumoConciliacao } from "@/lib/conciliacao";
 
 const TIPOS: Record<string, string> = {
   conta_corrente: "Conta Corrente",
@@ -26,12 +27,16 @@ export default async function ContasFinanceirasPage() {
     orderBy: { nome: "asc" },
   });
 
-  const itensLista: ItemContaFinanceira[] = contas.map((c) => ({
+  const resumos = await Promise.all(contas.map((c) => obterResumoConciliacao(c.id, c.saldoAtual)));
+
+  const itensLista: ItemContaFinanceira[] = contas.map((c, i) => ({
     id: c.id,
     nome: c.nome,
     tipoLabel: TIPOS[c.tipo] ?? c.tipo,
     banco: c.banco ?? "-",
-    saldoAtual: formatarMoeda(c.saldoAtual),
+    saldoSistema: formatarMoeda(c.saldoAtual),
+    totalPendencias: formatarMoeda(resumos[i].totalPendencias),
+    saldoBanco: formatarMoeda(resumos[i].saldoBanco),
     ativo: c.ativo,
     buscaTexto: [c.nome, c.banco, c.numeroConta].filter(Boolean).join(" ").toLowerCase(),
   }));

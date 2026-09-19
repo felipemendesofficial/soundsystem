@@ -528,7 +528,6 @@ export async function excluirLancamentoFinanceiro(
 
 const baixaSchema = z.object({
   contaId: z.string().min(1, "Selecione a conta."),
-  terceiroId: z.string().trim().optional(),
   dataBaixa: z.coerce.date({ message: "Informe a data da baixa." }),
   juros: z.coerce.number().nonnegative("Juros não pode ser negativo.").optional(),
   multa: z.coerce.number().nonnegative("Multa não pode ser negativa.").optional(),
@@ -552,7 +551,6 @@ export async function darBaixaLancamento(
 
   const parsed = baixaSchema.safeParse({
     contaId: formData.get("contaId"),
-    terceiroId: formData.get("terceiroId"),
     dataBaixa: formData.get("dataBaixa"),
     juros: formData.get("juros") || undefined,
     multa: formData.get("multa") || undefined,
@@ -567,19 +565,13 @@ export async function darBaixaLancamento(
   const erroConta = erroContaParaBaixa(conta, { tipoLancamento: lancamento.tipo, tipoDocumento: lancamento.tipoDocumento });
   if (erroConta) return { erro: erroConta };
 
+  // O terceiro do adiantamento nunca é escolhido na Baixa — é sempre o
+  // cliente/fornecedor já definido no próprio Lançamento (contraparte
+  // obrigatória conforme o tipo, ver criarLancamentoFinanceiro).
   const exigeCliente = lancamento.tipo === "receita" && conta.adiantamentoCliente;
   const exigeFornecedor = lancamento.tipo === "despesa" && conta.adiantamentoFornecedor;
-  if ((exigeCliente || exigeFornecedor) && !parsed.data.terceiroId) {
-    return { erro: exigeCliente ? "Selecione o cliente do adiantamento." : "Selecione o fornecedor do adiantamento." };
-  }
-  if (exigeCliente) {
-    const cliente = await db.cliente.findFirst({ where: { id: parsed.data.terceiroId, grupoId: permissao.session.user.grupoId! } });
-    if (!cliente) return { erro: "Cliente do adiantamento não encontrado." };
-  }
-  if (exigeFornecedor) {
-    const fornecedor = await db.fornecedor.findFirst({ where: { id: parsed.data.terceiroId, grupoId: permissao.session.user.grupoId! } });
-    if (!fornecedor) return { erro: "Fornecedor do adiantamento não encontrado." };
-  }
+  if (exigeCliente && !lancamento.clienteId) return { erro: "Este lançamento não tem cliente definido." };
+  if (exigeFornecedor && !lancamento.fornecedorId) return { erro: "Este lançamento não tem fornecedor definido." };
 
   try {
     await registrarBaixa({
@@ -591,8 +583,8 @@ export async function darBaixaLancamento(
       desconto: new Prisma.Decimal(parsed.data.desconto ?? 0),
       historicoComplementar: parsed.data.historicoComplementar,
       usuarioId: permissao.session.user.id,
-      adiantamentoClienteId: exigeCliente ? parsed.data.terceiroId : undefined,
-      adiantamentoFornecedorId: exigeFornecedor ? parsed.data.terceiroId : undefined,
+      adiantamentoClienteId: exigeCliente ? lancamento.clienteId! : undefined,
+      adiantamentoFornecedorId: exigeFornecedor ? lancamento.fornecedorId! : undefined,
     });
   } catch (e) {
     return { erro: e instanceof Error ? e.message : "Não foi possível dar baixa." };

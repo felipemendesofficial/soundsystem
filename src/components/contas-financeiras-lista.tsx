@@ -10,7 +10,9 @@ export type ItemContaFinanceira = {
   nome: string;
   tipoLabel: string;
   banco: string;
-  saldoAtual: string;
+  saldoSistema: string;
+  totalPendencias: string;
+  saldoBanco: string;
   ativo: boolean;
   buscaTexto: string;
 };
@@ -37,17 +39,14 @@ export function ContasFinanceirasLista({ itens }: { itens: ItemContaFinanceira[]
       ) : (
         <ul className="space-y-2">
           {filtrados.map((item) => (
-            <li key={item.id}>
-              <Link
-                href={`/contas-financeiras/${item.id}`}
-                className="relative block rounded-lg border border-border bg-card p-3 active:bg-accent"
-              >
+            <li key={item.id} className="rounded-lg border border-border bg-card">
+              <Link href={`/contas-financeiras/${item.id}`} className="relative block p-3 active:bg-accent">
                 <Badge variant={item.ativo ? "default" : "secondary"} className="absolute top-3 right-3">
                   {item.ativo ? "Ativa" : "Inativa"}
                 </Badge>
                 <h2 className="mb-2 text-[15px] font-semibold">{item.nome}</h2>
 
-                <div className="grid grid-cols-3 gap-2">
+                <div className="mb-2 grid grid-cols-2 gap-2">
                   <div className="min-w-0">
                     <div className="truncate text-[11px] leading-tight text-muted-foreground">Tipo</div>
                     <div className="truncate text-[14px] leading-tight font-medium">{item.tipoLabel}</div>
@@ -56,12 +55,31 @@ export function ContasFinanceirasLista({ itens }: { itens: ItemContaFinanceira[]
                     <div className="truncate text-[11px] leading-tight text-muted-foreground">Banco</div>
                     <div className="truncate text-[14px] leading-tight font-medium">{item.banco}</div>
                   </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 rounded-md bg-muted/50 px-2 py-1.5">
                   <div className="min-w-0">
-                    <div className="truncate text-[11px] leading-tight text-muted-foreground">Saldo</div>
-                    <div className="truncate text-[14px] leading-tight font-medium">{item.saldoAtual}</div>
+                    <div className="truncate text-[10.5px] leading-tight text-muted-foreground">Saldo empresa</div>
+                    <div className="truncate text-[13px] leading-tight font-medium">{item.saldoSistema}</div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-[10.5px] leading-tight text-muted-foreground">Pendências</div>
+                    <div className="truncate text-[13px] leading-tight font-medium">{item.totalPendencias}</div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-[10.5px] leading-tight text-muted-foreground">Saldo banco</div>
+                    <div className="truncate text-[13px] leading-tight font-medium">{item.saldoBanco}</div>
                   </div>
                 </div>
               </Link>
+              <div className="grid grid-cols-2 divide-x divide-border border-t border-border text-sm font-medium text-primary">
+                <Link href={`/contas-financeiras/${item.id}/extrato`} className="block px-3 py-2 text-center active:bg-accent">
+                  Extrato
+                </Link>
+                <Link href={`/contas-financeiras/${item.id}/conciliacao`} className="block px-3 py-2 text-center active:bg-accent">
+                  Conciliação Bancária
+                </Link>
+              </div>
             </li>
           ))}
         </ul>

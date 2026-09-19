@@ -976,7 +976,6 @@ export async function registrarEstornoMovimentoAplicacaoNaTransacao(
   const contaOrigemOriginal = original.daContaId ? contasTravadas.find((c) => c.id === original.daContaId) : undefined;
   const contaDestinoOriginal = contasTravadas.find((c) => c.id === original.paraContaId)!;
 
-  const tipoMovimentacao = original.tipoMovimento === "registro_rendimento" ? "rendimento_aplicacao" : original.tipoMovimento;
   const descricao = `Estorno — ${
     original.tipoMovimento === "aplicacao_financeira" ? "Aplicação financeira" : original.tipoMovimento === "resgate_aplicacao" ? "Resgate de aplicação" : "Rendimento de aplicação"
   }`;
@@ -993,7 +992,7 @@ export async function registrarEstornoMovimentoAplicacaoNaTransacao(
         empresaId: original.empresaId,
         contaId: original.daContaId!,
         contaDestinoId: original.paraContaId,
-        tipo: tipoMovimentacao,
+        tipo: "estorno_movimento_aplicacao",
         valor: original.valor,
         saldoAnterior: saldoAnteriorOrigem,
         saldoPosterior: saldoPosteriorOrigem,
@@ -1008,7 +1007,7 @@ export async function registrarEstornoMovimentoAplicacaoNaTransacao(
       empresaId: original.empresaId,
       contaId: original.paraContaId,
       contaDestinoId: original.daContaId ?? null,
-      tipo: tipoMovimentacao,
+      tipo: "estorno_movimento_aplicacao",
       valor: original.valor.negated(),
       saldoAnterior: saldoAnteriorDestino,
       saldoPosterior: saldoPosteriorDestino,

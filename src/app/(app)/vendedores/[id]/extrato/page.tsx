@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { PeriodoFilter } from "@/components/periodo-filter";
+import { primeiroDiaDoMesISO, ultimoDiaDoMesISO, intervaloPeriodo } from "@/lib/periodo";
 
 function formatarMoeda(valor: unknown) {
   return Number(valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -11,14 +13,26 @@ function formatarDataHora(data: Date) {
   return data.toLocaleString("pt-BR");
 }
 
-export default async function ExtratoComissaoVendedorPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ExtratoComissaoVendedorPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ periodo?: string; dataInicio?: string; dataFim?: string }>;
+}) {
   const { id } = await params;
+  const { periodo, dataInicio, dataFim } = await searchParams;
   const session = await auth();
   const vendedor = await db.vendedor.findFirst({ where: { id, grupoId: session!.user.grupoId! } });
   if (!vendedor) notFound();
 
+  const hoje = new Date();
+  const padraoInicio = primeiroDiaDoMesISO(hoje);
+  const padraoFim = ultimoDiaDoMesISO(hoje);
+  const filtroPeriodo = periodo === "todos" ? null : intervaloPeriodo(dataInicio ?? padraoInicio, dataFim ?? padraoFim);
+
   const extrato = await db.movimentacaoComissaoVendedor.findMany({
-    where: { vendedorId: id },
+    where: { vendedorId: id, ...(filtroPeriodo ? { criadoEm: filtroPeriodo } : {}) },
     orderBy: { criadoEm: "desc" },
     include: {
       comissao: {
@@ -41,9 +55,11 @@ export default async function ExtratoComissaoVendedorPage({ params }: { params: 
         <span className="text-base font-semibold">{formatarMoeda(vendedor.saldoComissao)}</span>
       </div>
 
+      <PeriodoFilter padraoInicio={padraoInicio} padraoFim={padraoFim} />
+
       {extrato.length === 0 ? (
         <p className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Nenhuma movimentação de comissão registrada.
+          Nenhuma movimentação de comissão registrada {filtroPeriodo ? "no período selecionado." : "."}
         </p>
       ) : (
         <ul className="space-y-2">

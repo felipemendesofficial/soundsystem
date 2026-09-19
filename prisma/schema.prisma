@@ -1489,6 +1489,7 @@ model MovimentacaoFinanceira {
   estorno              Estorno?                  @relation("MovimentacaoEstorno")
   transferenciaSaida   TransferenciaEntreContas? @relation("TransferenciaMovSaida")
   transferenciaEntrada TransferenciaEntreContas? @relation("TransferenciaMovEntrada")
+  pendenciasVinculadas PendenciaConciliacao[]
 
   @@index([empresaId, contaId, criadoEm])
   @@index([contaId, statusConciliacao])
@@ -1548,18 +1549,24 @@ model ExtratoBancarioLinha {
 
 /// Pendência tipo "Banco": valor no extrato real ainda não identificado pela empresa.
 model PendenciaConciliacao {
-  id           String          @id @default(uuid())
-  contaId      String          @map("conta_id")
-  tipo         TipoPendencia
-  data         DateTime
-  valor        Decimal         @db.Decimal(14, 2)
-  comentario   String?
-  origem       OrigemPendencia
-  resolvidoEm  DateTime?       @map("resolvido_em")
-  lancamentoId String?         @map("lancamento_id") // preenchido quando a pendência é finalmente identificada e vira LancamentoFinanceiro
-  criadoEm     DateTime        @default(now()) @map("criado_em")
+  id                      String          @id @default(uuid())
+  contaId                 String          @map("conta_id")
+  tipo                    TipoPendencia
+  data                    DateTime
+  valor                   Decimal         @db.Decimal(14, 2)
+  comentario              String?
+  origem                  OrigemPendencia
+  resolvidoEm             DateTime?       @map("resolvido_em")
+  lancamentoId            String?         @map("lancamento_id") // preenchido quando a pendência é finalmente identificada e vira LancamentoFinanceiro
+  // Movimento do sistema que resolveu esta pendência via `vincularPendenciaAMovimento`
+  // — sem @unique (evita o mesmo problema de migração non-interactive já visto
+  // com FK autoreferente; unicidade 1:1 é garantida na aplicação). Permite
+  // desfazer a conciliação e reabrir a pendência automaticamente juntos.
+  movimentacaoVinculadaId String?         @map("movimentacao_vinculada_id")
+  criadoEm                DateTime        @default(now()) @map("criado_em")
 
-  conta ContaFinanceira @relation(fields: [contaId], references: [id])
+  conta                 ContaFinanceira         @relation(fields: [contaId], references: [id])
+  movimentacaoVinculada MovimentacaoFinanceira? @relation(fields: [movimentacaoVinculadaId], references: [id])
 
   @@map("pendencias_conciliacao")
 }

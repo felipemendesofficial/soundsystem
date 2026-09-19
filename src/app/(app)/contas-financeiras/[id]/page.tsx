@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -35,10 +34,6 @@ export default async function EditarContaFinanceiraPage({ params }: { params: Pr
           {conta.ativo ? "Ativa" : "Inativa"}
         </Badge>
       </div>
-
-      <Button size="sm" variant="outline" render={<Link href={`/contas-financeiras/${id}/conciliacao`} />}>
-        Conciliação Bancária
-      </Button>
 
       <ContaFinanceiraForm
         action={atualizarContaFinanceira.bind(null, id)}

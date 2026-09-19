@@ -6,21 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxIcon,
-  ComboboxInput,
-  ComboboxInputGroup,
-  ComboboxItem,
-  ComboboxList,
-} from "@/components/ui/combobox";
 import type { BaixaFormState } from "../../actions";
 
 type Action = (prevState: BaixaFormState, formData: FormData) => Promise<BaixaFormState>;
-
-type ItemTerceiro = { id: string; label: string };
 
 type ContaBaixa = {
   id: string;
@@ -70,8 +58,7 @@ export function BaixaForm({
   dataVencimento,
   moraMes,
   tipoLancamento,
-  terceiros,
-  terceiroPadraoId,
+  terceiroLabel,
   percentualMulta,
 }: {
   action: Action;
@@ -82,9 +69,8 @@ export function BaixaForm({
   dataVencimento: string;
   moraMes: number | null;
   tipoLancamento: "receita" | "despesa";
-  /** Clientes (receita) ou fornecedores (despesa) — só usado quando a conta escolhida é de adiantamento. */
-  terceiros: ItemTerceiro[];
-  terceiroPadraoId?: string | null;
+  /** Cliente (receita) ou fornecedor (despesa) já definido no próprio Lançamento — não é escolhido aqui. */
+  terceiroLabel: string | null;
   /** Vem de ParametroFinanceiro.percentualMultaPadrao; `null` usa o padrão de 2% do código. */
   percentualMulta: number | null;
 }) {
@@ -95,9 +81,6 @@ export function BaixaForm({
   const [multa, setMulta] = useState(() => calcularMultaPreview(valorOriginal, percentualMultaEfetivo, dataVencimento, hojeISO()).toFixed(2));
   const [desconto, setDesconto] = useState("0");
   const [contaId, setContaId] = useState(contaPrevistaId ?? "");
-  const [terceiroId, setTerceiroId] = useState<ItemTerceiro | null>(
-    terceiroPadraoId ? terceiros.find((t) => t.id === terceiroPadraoId) ?? null : null
-  );
 
   const itensContas = Object.fromEntries(contas.map((c) => [c.id, c.label]));
   const contaSelecionada = contas.find((c) => c.id === contaId) ?? null;
@@ -110,18 +93,13 @@ export function BaixaForm({
 
   return (
     <form action={formAction} className="max-w-md space-y-6">
-      <input type="hidden" name="terceiroId" value={terceiroId?.id ?? ""} />
-
       <div className="space-y-2">
         <Label htmlFor="contaId" className={labelClass}>Conta</Label>
         <Select
           name="contaId"
           value={contaId}
           items={itensContas}
-          onValueChange={(v) => {
-            setContaId(v ?? "");
-            setTerceiroId(null);
-          }}
+          onValueChange={(v) => setContaId(v ?? "")}
         >
           <SelectTrigger id="contaId" className={`w-full ${inputClass}`}>
             <SelectValue placeholder="Selecione..." />
@@ -137,30 +115,11 @@ export function BaixaForm({
       {exigeTerceiro && (
         <div className="space-y-2">
           <Label className={labelClass}>{tipoLancamento === "receita" ? "Cliente do adiantamento" : "Fornecedor do adiantamento"}</Label>
-          <Combobox
-            items={terceiros}
-            value={terceiroId}
-            onValueChange={(item: ItemTerceiro | null) => setTerceiroId(item)}
-            itemToStringLabel={(item: ItemTerceiro) => item.label}
-            itemToStringValue={(item: ItemTerceiro) => item.id}
-          >
-            <ComboboxInputGroup>
-              <ComboboxInput placeholder={`Buscar ${tipoLancamento === "receita" ? "cliente" : "fornecedor"}...`} />
-              <ComboboxIcon />
-            </ComboboxInputGroup>
-            <ComboboxContent>
-              <ComboboxEmpty>Nenhum resultado.</ComboboxEmpty>
-              <ComboboxList>
-                {(item: ItemTerceiro) => (
-                  <ComboboxItem key={item.id} value={item}>
-                    {item.label}
-                  </ComboboxItem>
-                )}
-              </ComboboxList>
-            </ComboboxContent>
-          </Combobox>
+          <div className={`flex items-center ${inputClass} rounded-md border border-border text-muted-foreground`}>
+            {terceiroLabel ?? "—"}
+          </div>
           <p className="text-xs text-muted-foreground">
-            Essa conta controla um saldo de adiantamento por {tipoLancamento === "receita" ? "cliente" : "fornecedor"} — o valor baixado é debitado do saldo dessa pessoa.
+            {tipoLancamento === "receita" ? "O cliente" : "O fornecedor"} já vem da definição do próprio lançamento — essa conta controla um saldo de adiantamento por {tipoLancamento === "receita" ? "cliente" : "fornecedor"}, e o valor baixado é debitado do saldo dessa pessoa.
           </p>
         </div>
       )}
