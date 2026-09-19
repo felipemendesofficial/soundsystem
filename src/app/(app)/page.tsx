@@ -3,10 +3,39 @@ import { ChevronRight, Plus, ClipboardList, Calculator, Wrench, Wallet } from "l
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { podeGerenciarOrcamento, podeGerenciarFinanceiro, podeVerCusto } from "@/lib/permissions";
+import { obterResumoConciliacao } from "@/lib/conciliacao";
+import { obterUltimosPrecosVenda } from "@/lib/tabela-preco";
 import { cn } from "@/lib/utils";
 
 function formatarMoeda(valor: number) {
   return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function Metrica({
+  label,
+  value,
+  highlight,
+  negativo,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  negativo?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="font-mono text-[9px] uppercase tracking-[0.06em] text-text-faint">{label}</div>
+      <div
+        className={cn(
+          "mt-1 truncate text-[17px] font-normal leading-tight",
+          highlight && "font-semibold text-primary",
+          negativo && "text-destructive"
+        )}
+      >
+        {value}
+      </div>
+    </div>
+  );
 }
 
 async function obterVisaoGeralVendas(empresaId: string) {
@@ -136,6 +165,90 @@ async function obterVisaoGeralVendas(empresaId: string) {
   };
 }
 
+async function obterVisaoGeralEstoque(empresaId: string) {
+  const [totalProdutosAgregado, precos] = await Promise.all([
+    db.produtoEstoque.groupBy({
+      by: ["produtoId"],
+      where: { empresaId },
+      _sum: { quantidadeSaldo: true, valorTotalSaldo: true },
+    }),
+    obterUltimosPrecosVenda(empresaId),
+  ]);
+
+  let valorTotalCusto = 0;
+  let valorTotalVenda = 0;
+  for (const item of totalProdutosAgregado) {
+    valorTotalCusto += Number(item._sum.valorTotalSaldo ?? 0);
+    const precoVenda = precos.get(item.produtoId) ?? 0;
+    valorTotalVenda += Number(item._sum.quantidadeSaldo ?? 0) * precoVenda;
+  }
+
+  return { valorTotalCusto, valorTotalVenda };
+}
+
+/**
+ * "Saldo do banco" aqui é a soma de `obterResumoConciliacao` de TODAS as
+ * contas da empresa — retrato agregado do momento atual (não filtra por
+ * período), mesma fórmula/decisões já usadas na tela de Contas Financeiras
+ * (pendência da empresa − pendência do banco, sinais opostos).
+ */
+async function obterVisaoGeralFinanceira(empresaId: string) {
+  const contas = await db.contaFinanceira.findMany({
+    where: { empresaId },
+    select: { id: true, tipo: true, adiantamentoCliente: true, adiantamentoFornecedor: true, saldoAtual: true },
+  });
+
+  let saldoContaCorrente = 0;
+  let saldoAdiantamento = 0;
+  let saldoCaixa = 0;
+  let saldoFundoFixo = 0;
+  let saldoAplicacao = 0;
+  for (const c of contas) {
+    const saldo = Number(c.saldoAtual);
+    if (c.tipo === "conta_corrente" && (c.adiantamentoCliente || c.adiantamentoFornecedor)) saldoAdiantamento += saldo;
+    else if (c.tipo === "conta_corrente") saldoContaCorrente += saldo;
+    else if (c.tipo === "caixa") saldoCaixa += saldo;
+    else if (c.tipo === "fundo_fixo") saldoFundoFixo += saldo;
+    else if (c.tipo === "aplicacao") saldoAplicacao += saldo;
+  }
+
+  const resumosConciliacao = await Promise.all(contas.map((c) => obterResumoConciliacao(c.id, c.saldoAtual)));
+  const saldoBancoTotal = resumosConciliacao.reduce((acc, r) => acc + Number(r.saldoBanco), 0);
+
+  const hoje = new Date();
+  const [contasAReceber, contasAPagar, receitasVencidas, despesasVencidas] = await Promise.all([
+    db.lancamentoFinanceiro.aggregate({
+      where: { empresaId, tipo: "receita", status: "aberto", natureza: "real" },
+      _sum: { valorOriginal: true },
+    }),
+    db.lancamentoFinanceiro.aggregate({
+      where: { empresaId, tipo: "despesa", status: "aberto", natureza: "real" },
+      _sum: { valorOriginal: true },
+    }),
+    db.lancamentoFinanceiro.aggregate({
+      where: { empresaId, tipo: "receita", status: "aberto", natureza: "real", dataVencimento: { lt: hoje } },
+      _sum: { valorOriginal: true },
+    }),
+    db.lancamentoFinanceiro.aggregate({
+      where: { empresaId, tipo: "despesa", status: "aberto", natureza: "real", dataVencimento: { lt: hoje } },
+      _sum: { valorOriginal: true },
+    }),
+  ]);
+
+  return {
+    saldoContaCorrente,
+    saldoAdiantamento,
+    saldoCaixa,
+    saldoFundoFixo,
+    saldoAplicacao,
+    saldoBancoTotal,
+    contasAReceber: Number(contasAReceber._sum.valorOriginal ?? 0),
+    contasAPagar: Number(contasAPagar._sum.valorOriginal ?? 0),
+    receitasVencidas: Number(receitasVencidas._sum.valorOriginal ?? 0),
+    despesasVencidas: Number(despesasVencidas._sum.valorOriginal ?? 0),
+  };
+}
+
 export default async function HomePage() {
   const session = await auth();
   const perfil = session!.user.perfil;
@@ -144,26 +257,14 @@ export default async function HomePage() {
 
   const totalProdutos = await db.produto.count({ where: { ativo: true, grupoId } });
 
-  let valorTotalEstoque: string | null = null;
+  let visaoGeralEstoque: Awaited<ReturnType<typeof obterVisaoGeralEstoque>> | null = null;
   let visaoGeralVendas: Awaited<ReturnType<typeof obterVisaoGeralVendas>> | null = null;
   if (podeVerCusto(perfil)) {
-    const agregado = await db.produtoEstoque.aggregate({
-      where: { empresaId },
-      _sum: { valorTotalSaldo: true },
-    });
-    valorTotalEstoque = Number(agregado._sum.valorTotalSaldo ?? 0).toLocaleString("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    });
+    visaoGeralEstoque = await obterVisaoGeralEstoque(empresaId);
     visaoGeralVendas = await obterVisaoGeralVendas(empresaId);
   }
 
-  const stats = [
-    { label: "Produtos ativos", value: String(totalProdutos), dot: "bg-brand-green" },
-    ...(valorTotalEstoque !== null
-      ? [{ label: "Valor total em estoque", value: valorTotalEstoque, dot: "bg-primary", warn: true }]
-      : []),
-  ];
+  const visaoGeralFinanceira = podeGerenciarFinanceiro(perfil) ? await obterVisaoGeralFinanceira(empresaId) : null;
 
   const atalhos = [
     {
@@ -208,31 +309,7 @@ export default async function HomePage() {
 
   return (
     <div>
-      <h1 className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-faint">Visão geral do estoque</h1>
-
-      <div className="-mx-[18px] mt-[18px] flex gap-2.5 overflow-x-auto px-[18px] pb-1 [scrollbar-width:none]">
-        {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className="relative w-fit min-w-[140px] flex-none rounded-[14px] border border-border bg-card p-3.5 pb-4"
-          >
-            <div className={cn("absolute right-2.5 top-2.5 size-2 rounded-full", stat.dot)} />
-            <div className="mb-2.5 font-mono text-[9.5px] uppercase tracking-[0.08em] text-text-faint">
-              {stat.label}
-            </div>
-            <div
-              className={cn(
-                "font-heading text-[32px] font-extrabold leading-none whitespace-nowrap",
-                stat.warn && "text-primary"
-              )}
-            >
-              {stat.value}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="pb-2.5 pt-[22px] font-mono text-[10px] uppercase tracking-[0.14em] text-text-faint">
+      <div className="pb-2.5 font-mono text-[10px] uppercase tracking-[0.14em] text-text-faint">
         Ações rápidas
       </div>
       <div className="flex flex-col gap-2.5">
@@ -253,6 +330,43 @@ export default async function HomePage() {
           </Link>
         ))}
       </div>
+
+      {visaoGeralEstoque && (
+        <>
+          <div className="pb-2.5 pt-[22px] font-mono text-[10px] uppercase tracking-[0.14em] text-text-faint">
+            Visão Geral do Estoque
+          </div>
+          <div className="rounded-[14px] border border-border bg-card p-4">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+              <Metrica label="Produtos ativos" value={String(totalProdutos)} />
+              <Metrica label="Valor total em estoque" value={formatarMoeda(visaoGeralEstoque.valorTotalCusto)} />
+              <Metrica label="Valor em estoque a preço de venda" value={formatarMoeda(visaoGeralEstoque.valorTotalVenda)} />
+            </div>
+          </div>
+        </>
+      )}
+
+      {visaoGeralFinanceira && (
+        <>
+          <div className="pb-2.5 pt-[22px] font-mono text-[10px] uppercase tracking-[0.14em] text-text-faint">
+            Visão Geral Financeira
+          </div>
+          <div className="rounded-[14px] border border-border bg-card p-4">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+              <Metrica label="Saldo conta corrente" value={formatarMoeda(visaoGeralFinanceira.saldoContaCorrente)} />
+              <Metrica label="Saldo contas adiantamento" value={formatarMoeda(visaoGeralFinanceira.saldoAdiantamento)} />
+              <Metrica label="Saldo caixa" value={formatarMoeda(visaoGeralFinanceira.saldoCaixa)} />
+              <Metrica label="Saldo fundo fixo" value={formatarMoeda(visaoGeralFinanceira.saldoFundoFixo)} />
+              <Metrica label="Saldo contas aplicação" value={formatarMoeda(visaoGeralFinanceira.saldoAplicacao)} />
+              <Metrica label="Saldo segundo o banco" value={formatarMoeda(visaoGeralFinanceira.saldoBancoTotal)} highlight />
+              <Metrica label="Contas a receber" value={formatarMoeda(visaoGeralFinanceira.contasAReceber)} />
+              <Metrica label="Contas a pagar" value={formatarMoeda(visaoGeralFinanceira.contasAPagar)} />
+              <Metrica label="Receitas vencidas" value={formatarMoeda(visaoGeralFinanceira.receitasVencidas)} negativo={visaoGeralFinanceira.receitasVencidas > 0} />
+              <Metrica label="Despesas vencidas" value={formatarMoeda(visaoGeralFinanceira.despesasVencidas)} negativo={visaoGeralFinanceira.despesasVencidas > 0} />
+            </div>
+          </div>
+        </>
+      )}
 
       {visaoGeralVendas && (
         <>
