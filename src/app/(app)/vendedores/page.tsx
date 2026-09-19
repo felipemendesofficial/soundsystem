@@ -11,6 +11,10 @@ function formatarComissao(vendedor: { recebeComissao: boolean; tipoComissao: str
     : Number(vendedor.valorComissao).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function formatarMoeda(valor: unknown) {
+  return Number(valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 export default async function VendedoresPage() {
   const session = await auth();
   const vendedores = await db.vendedor.findMany({
@@ -23,6 +27,7 @@ export default async function VendedoresPage() {
     nome: v.nome,
     ativo: v.ativo,
     comissao: formatarComissao(v),
+    saldoComissao: formatarMoeda(v.saldoComissao),
     buscaTexto: v.nome.toLowerCase(),
   }));
 

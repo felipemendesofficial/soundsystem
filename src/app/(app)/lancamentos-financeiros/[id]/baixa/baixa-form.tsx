@@ -6,9 +6,28 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxIcon,
+  ComboboxInput,
+  ComboboxInputGroup,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
 import type { BaixaFormState } from "../../actions";
 
 type Action = (prevState: BaixaFormState, formData: FormData) => Promise<BaixaFormState>;
+
+type ItemTerceiro = { id: string; label: string };
+
+type ContaBaixa = {
+  id: string;
+  label: string;
+  adiantamentoCliente: boolean;
+  adiantamentoFornecedor: boolean;
+};
 
 const labelClass = "text-[15px] font-semibold";
 const inputClass = "h-11 px-3.5 text-base bg-card";
@@ -22,7 +41,7 @@ function hojeISO() {
 }
 
 /**
- * Prévia client-side em `number` — a mesma fórmula de `src/lib/juros-mora.ts`
+ * Prévia client-side em `number` — mesma fórmula de `src/lib/juros-mora.ts`
  * (pro-rata simples, mês fixo de 30 dias), recomputada com `Decimal` no
  * server ao confirmar. Mesmo padrão de duplicação já usado em
  * `orcamento-form.tsx` pro cálculo de rateio.
@@ -34,6 +53,14 @@ function calcularJurosMoraPreview(valorOriginal: number, moraMes: number | null,
   return (valorOriginal * (moraMes / 30) * diasAtraso) / 100;
 }
 
+/** Multa por atraso — teto de 2% previsto no CDC (art. 52 §1º) usado só se a empresa não configurou outro % em Parâmetros Financeiros. Sempre uma sugestão pré-preenchida, editável. */
+const PERCENTUAL_MULTA_ATRASO_PADRAO = 2;
+
+function calcularMultaPreview(valorOriginal: number, percentualMulta: number, dataVencimento: string, dataBaixa: string): number {
+  const emAtraso = new Date(dataBaixa).getTime() > new Date(dataVencimento).getTime();
+  return emAtraso ? (valorOriginal * percentualMulta) / 100 : 0;
+}
+
 export function BaixaForm({
   action,
   cancelarHref,
@@ -42,22 +69,40 @@ export function BaixaForm({
   valorOriginal,
   dataVencimento,
   moraMes,
+  tipoLancamento,
+  terceiros,
+  terceiroPadraoId,
+  percentualMulta,
 }: {
   action: Action;
   cancelarHref: string;
-  contas: { id: string; label: string }[];
+  contas: ContaBaixa[];
   contaPrevistaId?: string | null;
   valorOriginal: number;
   dataVencimento: string;
   moraMes: number | null;
+  tipoLancamento: "receita" | "despesa";
+  /** Clientes (receita) ou fornecedores (despesa) — só usado quando a conta escolhida é de adiantamento. */
+  terceiros: ItemTerceiro[];
+  terceiroPadraoId?: string | null;
+  /** Vem de ParametroFinanceiro.percentualMultaPadrao; `null` usa o padrão de 2% do código. */
+  percentualMulta: number | null;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
+  const percentualMultaEfetivo = percentualMulta ?? PERCENTUAL_MULTA_ATRASO_PADRAO;
   const [dataBaixa, setDataBaixa] = useState(hojeISO());
   const [juros, setJuros] = useState(() => calcularJurosMoraPreview(valorOriginal, moraMes, dataVencimento, hojeISO()).toFixed(2));
-  const [multa, setMulta] = useState("0");
+  const [multa, setMulta] = useState(() => calcularMultaPreview(valorOriginal, percentualMultaEfetivo, dataVencimento, hojeISO()).toFixed(2));
   const [desconto, setDesconto] = useState("0");
+  const [contaId, setContaId] = useState(contaPrevistaId ?? "");
+  const [terceiroId, setTerceiroId] = useState<ItemTerceiro | null>(
+    terceiroPadraoId ? terceiros.find((t) => t.id === terceiroPadraoId) ?? null : null
+  );
 
   const itensContas = Object.fromEntries(contas.map((c) => [c.id, c.label]));
+  const contaSelecionada = contas.find((c) => c.id === contaId) ?? null;
+  const exigeTerceiro =
+    tipoLancamento === "receita" ? !!contaSelecionada?.adiantamentoCliente : !!contaSelecionada?.adiantamentoFornecedor;
 
   const valorBaixado = useMemo(() => {
     return valorOriginal + (Number(juros) || 0) + (Number(multa) || 0) - (Number(desconto) || 0);
@@ -65,9 +110,19 @@ export function BaixaForm({
 
   return (
     <form action={formAction} className="max-w-md space-y-6">
+      <input type="hidden" name="terceiroId" value={terceiroId?.id ?? ""} />
+
       <div className="space-y-2">
         <Label htmlFor="contaId" className={labelClass}>Conta</Label>
-        <Select name="contaId" defaultValue={contaPrevistaId ?? undefined} items={itensContas}>
+        <Select
+          name="contaId"
+          value={contaId}
+          items={itensContas}
+          onValueChange={(v) => {
+            setContaId(v ?? "");
+            setTerceiroId(null);
+          }}
+        >
           <SelectTrigger id="contaId" className={`w-full ${inputClass}`}>
             <SelectValue placeholder="Selecione..." />
           </SelectTrigger>
@@ -78,6 +133,37 @@ export function BaixaForm({
           </SelectContent>
         </Select>
       </div>
+
+      {exigeTerceiro && (
+        <div className="space-y-2">
+          <Label className={labelClass}>{tipoLancamento === "receita" ? "Cliente do adiantamento" : "Fornecedor do adiantamento"}</Label>
+          <Combobox
+            items={terceiros}
+            value={terceiroId}
+            onValueChange={(item: ItemTerceiro | null) => setTerceiroId(item)}
+            itemToStringLabel={(item: ItemTerceiro) => item.label}
+            itemToStringValue={(item: ItemTerceiro) => item.id}
+          >
+            <ComboboxInputGroup>
+              <ComboboxInput placeholder={`Buscar ${tipoLancamento === "receita" ? "cliente" : "fornecedor"}...`} />
+              <ComboboxIcon />
+            </ComboboxInputGroup>
+            <ComboboxContent>
+              <ComboboxEmpty>Nenhum resultado.</ComboboxEmpty>
+              <ComboboxList>
+                {(item: ItemTerceiro) => (
+                  <ComboboxItem key={item.id} value={item}>
+                    {item.label}
+                  </ComboboxItem>
+                )}
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
+          <p className="text-xs text-muted-foreground">
+            Essa conta controla um saldo de adiantamento por {tipoLancamento === "receita" ? "cliente" : "fornecedor"} — o valor baixado é debitado do saldo dessa pessoa.
+          </p>
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="dataBaixa" className={labelClass}>Data da Baixa</Label>
@@ -90,6 +176,7 @@ export function BaixaForm({
           onChange={(e) => {
             setDataBaixa(e.target.value);
             setJuros(calcularJurosMoraPreview(valorOriginal, moraMes, dataVencimento, e.target.value).toFixed(2));
+            setMulta(calcularMultaPreview(valorOriginal, percentualMultaEfetivo, dataVencimento, e.target.value).toFixed(2));
           }}
           className={inputClass}
         />

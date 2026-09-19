@@ -215,6 +215,14 @@ model Usuario {
   orcamentos     Orcamento[]
   lancamentos    Lancamento[]
 
+  lancamentosFinanceirosCriados     LancamentoFinanceiro[]     @relation("LancamentoFinanceiroCriadoPor")
+  lancamentosFinanceirosAtualizados LancamentoFinanceiro[]     @relation("LancamentoFinanceiroAtualizadoPor")
+  baixasFinanceiras                 Baixa[]                    @relation("BaixaUsuario")
+  transferenciasFeitas              TransferenciaEntreContas[] @relation("TransferenciaUsuario")
+  transferenciasEstornadas          TransferenciaEntreContas[] @relation("TransferenciaEstornadoPor")
+  movimentosAplicacaoFeitos         MovimentoAplicacao[]       @relation("MovAplicacaoUsuario")
+  movimentosAplicacaoEstornados     MovimentoAplicacao[]       @relation("MovAplicacaoEstornadoPor")
+
   @@map("usuarios")
 }
 
@@ -233,11 +241,12 @@ model Fornecedor {
   orcamentos    Orcamento[]
   lancamentos   Lancamento[]
 
-  lancamentosFinanceiros     LancamentoFinanceiro[]
-  movimentacoesFinanceiras   MovimentacaoFinanceira[]
-  dadosChequeComoTerceiro    DadosCheque[]
-  saldosAdiantamento         SaldoAdiantamentoTerceiro[]
-  transferenciasAdiantamento TransferenciaEntreContas[]
+  lancamentosFinanceiros   LancamentoFinanceiro[]
+  movimentacoesFinanceiras MovimentacaoFinanceira[]
+  saldosAdiantamento       SaldoAdiantamentoTerceiro[]
+  transferenciasOrigem     TransferenciaEntreContas[]  @relation("TransfOrigemFornecedor")
+  transferenciasDestino    TransferenciaEntreContas[]  @relation("TransfDestinoFornecedor")
+  baixasAdiantamento       Baixa[]                     @relation("BaixaAdiantamentoFornecedor")
 
   @@map("fornecedores")
 }
@@ -258,11 +267,12 @@ model Cliente {
   ordensServico     OrdemServico[]
   lancamentos       Lancamento[]
 
-  lancamentosFinanceiros     LancamentoFinanceiro[]
-  movimentacoesFinanceiras   MovimentacaoFinanceira[]
-  dadosChequeComoTerceiro    DadosCheque[]
-  saldosAdiantamento         SaldoAdiantamentoTerceiro[]
-  transferenciasAdiantamento TransferenciaEntreContas[]
+  lancamentosFinanceiros   LancamentoFinanceiro[]
+  movimentacoesFinanceiras MovimentacaoFinanceira[]
+  saldosAdiantamento       SaldoAdiantamentoTerceiro[]
+  transferenciasOrigem     TransferenciaEntreContas[]  @relation("TransfOrigemCliente")
+  transferenciasDestino    TransferenciaEntreContas[]  @relation("TransfDestinoCliente")
+  baixasAdiantamento       Baixa[]                     @relation("BaixaAdiantamentoCliente")
 
   @@map("clientes")
 }
@@ -279,6 +289,10 @@ model Vendedor {
   recebeComissao Boolean       @default(false) @map("recebe_comissao")
   tipoComissao   TipoComissao? @map("tipo_comissao")
   valorComissao  Decimal?      @map("valor_comissao") @db.Decimal(14, 4)
+  // "Conta corrente" de comissão do vendedor — creditada na Baixa de uma
+  // Receita com Comissão indicada, debitada na Baixa de uma Despesa com
+  // Comissão indicada (o pagamento em si). Ver MovimentacaoComissaoVendedor.
+  saldoComissao  Decimal       @default(0) @map("saldo_comissao") @db.Decimal(14, 2)
   criadoEm       DateTime      @default(now()) @map("criado_em")
 
   grupo         GrupoEmpresarial @relation(fields: [grupoId], references: [id], onDelete: Restrict)
@@ -286,7 +300,8 @@ model Vendedor {
   ordensServico OrdemServico[]
   lancamentos   Lancamento[]
 
-  comissoes Comissao[] @relation("ComissaoVendedor")
+  comissoes             Comissao[]                     @relation("ComissaoVendedor")
+  movimentacoesComissao MovimentacaoComissaoVendedor[]
 
   @@map("vendedores")
 }
@@ -850,17 +865,25 @@ model ContaFinanceira {
 /// existir antes de configurar isso — obrigatoriedade validada em Server
 /// Action no momento de registrar um MovimentoAplicacao.
 model ParametroFinanceiro {
-  id                String   @id @default(uuid())
-  empresaId         String   @unique @map("empresa_id")
-  planoAplicacaoId  String?  @map("plano_aplicacao_id")
-  planoResgateId    String?  @map("plano_resgate_id")
-  planoRendimentoId String?  @map("plano_rendimento_id")
-  atualizadoEm      DateTime @updatedAt @map("atualizado_em")
+  id                    String   @id @default(uuid())
+  empresaId             String   @unique @map("empresa_id")
+  planoAplicacaoId      String?  @map("plano_aplicacao_id")
+  planoResgateId        String?  @map("plano_resgate_id")
+  planoRendimentoId     String?  @map("plano_rendimento_id")
+  // Empréstimo contraído no banco injeta dinheiro novo (não é só realocação
+  // entre contas próprias) — precisa de um Plano Financeiro pra aparecer
+  // corretamente no fluxo de caixa, ao contrário das demais Transferências.
+  planoEmprestimoId     String?  @map("plano_emprestimo_id")
+  // Sugestão pré-preenchida de multa por atraso na Baixa (%) — sempre editável
+  // linha a linha; null usa o padrão do código (2%, teto do CDC art. 52 §1º).
+  percentualMultaPadrao Decimal? @map("percentual_multa_padrao") @db.Decimal(5, 2)
+  atualizadoEm          DateTime @updatedAt @map("atualizado_em")
 
   empresa         Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
   planoAplicacao  PlanoFinanceiro? @relation("ParamPlanoAplicacao", fields: [planoAplicacaoId], references: [id])
   planoResgate    PlanoFinanceiro? @relation("ParamPlanoResgate", fields: [planoResgateId], references: [id])
   planoRendimento PlanoFinanceiro? @relation("ParamPlanoRendimento", fields: [planoRendimentoId], references: [id])
+  planoEmprestimo PlanoFinanceiro? @relation("ParamPlanoEmprestimo", fields: [planoEmprestimoId], references: [id])
 
   @@map("parametros_financeiros")
 }
@@ -893,17 +916,18 @@ model MascaraSegmento {
 }
 
 model PlanoFinanceiro {
-  id        String                   @id @default(uuid())
-  grupoId   String                   @map("grupo_id")
-  mascaraId String                   @map("mascara_id")
-  codigo    String
-  descricao String
-  tipo      TipoLancamentoFinanceiro
-  natureza  NaturezaConta
-  nivel     Int
-  paiId     String?                  @map("pai_id")
-  ativo     Boolean                  @default(true)
-  criadoEm  DateTime                 @default(now()) @map("criado_em")
+  id              String                   @id @default(uuid())
+  grupoId         String                   @map("grupo_id")
+  mascaraId       String                   @map("mascara_id")
+  codigo          String
+  descricao       String
+  tipo            TipoLancamentoFinanceiro
+  natureza        NaturezaConta
+  nivel           Int
+  paiId           String?                  @map("pai_id")
+  ativo           Boolean                  @default(true)
+  permiteRetencao Boolean                  @default(false) @map("permite_retencao") // só contas analíticas marcadas aqui aparecem no rateio de Retenções do Lançamento
+  criadoEm        DateTime                 @default(now()) @map("criado_em")
 
   grupo   GrupoEmpresarial       @relation(fields: [grupoId], references: [id], onDelete: Restrict)
   mascara MascaraPlanoFinanceiro @relation(fields: [mascaraId], references: [id])
@@ -916,6 +940,7 @@ model PlanoFinanceiro {
   parametrosAplicacao  ParametroFinanceiro[]    @relation("ParamPlanoAplicacao")
   parametrosResgate    ParametroFinanceiro[]    @relation("ParamPlanoResgate")
   parametrosRendimento ParametroFinanceiro[]    @relation("ParamPlanoRendimento")
+  parametrosEmprestimo ParametroFinanceiro[]    @relation("ParamPlanoEmprestimo")
 
   @@unique([grupoId, codigo])
   @@index([paiId])
@@ -1073,8 +1098,11 @@ model LancamentoFinanceiro {
 
   processoId String @map("processo_id")
 
-  observacao String?
-  criadoEm   DateTime @default(now()) @map("criado_em")
+  observacao      String?
+  criadoEm        DateTime  @default(now()) @map("criado_em")
+  criadoPorId     String?   @map("criado_por_id")
+  atualizadoEm    DateTime? @map("atualizado_em") // só setado por uma edição manual (atualizarLancamentoFinanceiro) — nunca por baixa/estorno/confirmação de previsão
+  atualizadoPorId String?   @map("atualizado_por_id")
 
   empresa       Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
   portador      Portador?        @relation(fields: [portadorId], references: [id])
@@ -1082,6 +1110,8 @@ model LancamentoFinanceiro {
   cliente       Cliente?         @relation(fields: [clienteId], references: [id])
   fornecedor    Fornecedor?      @relation(fields: [fornecedorId], references: [id])
   processo      Processo         @relation(fields: [processoId], references: [id])
+  criadoPor     Usuario?         @relation("LancamentoFinanceiroCriadoPor", fields: [criadoPorId], references: [id])
+  atualizadoPor Usuario?         @relation("LancamentoFinanceiroAtualizadoPor", fields: [atualizadoPorId], references: [id])
 
   rateios             LancamentoRateio[]
   rateiosProcesso     LancamentoRateioProcesso[]
@@ -1194,7 +1224,39 @@ model Comissao {
   vendedor   Vendedor              @relation("ComissaoVendedor", fields: [vendedorId], references: [id])
   pagamento  LancamentoFinanceiro? @relation("ComissaoPaga", fields: [pagamentoId], references: [id])
 
+  movimentacoesComissao MovimentacaoComissaoVendedor[]
+
   @@map("comissoes")
+}
+
+enum TipoMovimentoComissao {
+  entrada
+  saida
+}
+
+/// Extrato da "conta corrente" de comissão do vendedor — mesmo padrão de
+/// MovimentacaoFinanceira (saldoAnterior/saldoPosterior por linha, não só um
+/// total), necessário porque o sistema permite lançamento retroativo em dia
+/// reaberto. `entrada` vem de Comissao de uma Receita baixada; `saida` vem de
+/// Comissao de uma Despesa baixada (o pagamento ao vendedor).
+model MovimentacaoComissaoVendedor {
+  id             String                @id @default(uuid())
+  vendedorId     String                @map("vendedor_id")
+  tipo           TipoMovimentoComissao
+  valor          Decimal               @db.Decimal(14, 2) // sempre positivo — o `tipo` indica o sinal
+  saldoAnterior  Decimal               @map("saldo_anterior") @db.Decimal(14, 2)
+  saldoPosterior Decimal               @map("saldo_posterior") @db.Decimal(14, 2)
+  comissaoId     String                @map("comissao_id")
+  baixaId        String                @map("baixa_id")
+  descricao      String
+  criadoEm       DateTime              @default(now()) @map("criado_em")
+
+  vendedor Vendedor @relation(fields: [vendedorId], references: [id])
+  comissao Comissao @relation(fields: [comissaoId], references: [id])
+  baixa    Baixa    @relation(fields: [baixaId], references: [id])
+
+  @@index([vendedorId, criadoEm])
+  @@map("movimentacoes_comissao_vendedor")
 }
 
 model DadosCheque {
@@ -1208,13 +1270,10 @@ model DadosCheque {
   cpf           String?
   telefone      String?
 
-  // Terceiro dono do cheque: nunca os dois juntos.
-  terceiroClienteId    String? @map("terceiro_cliente_id")
-  terceiroFornecedorId String? @map("terceiro_fornecedor_id")
+  // Nome livre do terceiro dono do cheque (quando não é o cliente/fornecedor do lançamento) — campo aberto, não um cadastro.
+  terceiro String?
 
-  lancamento         LancamentoFinanceiro @relation(fields: [lancamentoId], references: [id])
-  terceiroCliente    Cliente?             @relation(fields: [terceiroClienteId], references: [id])
-  terceiroFornecedor Fornecedor?          @relation(fields: [terceiroFornecedorId], references: [id])
+  lancamento LancamentoFinanceiro @relation(fields: [lancamentoId], references: [id])
 
   @@map("dados_cheque")
 }
@@ -1224,7 +1283,6 @@ model DadosCartao {
   lancamentoId      String          @unique @map("lancamento_id")
   operadora         String?
   numeroCartao      String?         @map("numero_cartao")
-  loteRv            String?         @map("lote_rv")
   numeroAutorizacao String?         @map("numero_autorizacao")
   tipoTaxa          TipoTaxaCartao? @map("tipo_taxa")
 
@@ -1241,6 +1299,7 @@ model Baixa {
   lancamentoId          String   @map("lancamento_id")
   contaId               String   @map("conta_id")
   valorBaixado          Decimal  @map("valor_baixado") @db.Decimal(14, 2)
+  retencoes             Decimal  @default(0) @db.Decimal(14, 2) // total de Retencao já abatido de valorBaixado (não recolhido ainda — ver StatusRetencao)
   dataBaixa             DateTime @map("data_baixa")
   juros                 Decimal  @default(0) @db.Decimal(14, 2)
   multa                 Decimal  @default(0) @db.Decimal(14, 2)
@@ -1249,15 +1308,27 @@ model Baixa {
   alineaDevolucaoId     String?  @map("alinea_devolucao_id")
   estornada             Boolean  @default(false)
   movimentacaoId        String   @unique @map("movimentacao_id")
+  usuarioId             String?  @map("usuario_id")
 
-  lancamento      LancamentoFinanceiro   @relation(fields: [lancamentoId], references: [id])
-  conta           ContaFinanceira        @relation(fields: [contaId], references: [id])
-  alineaDevolucao AlineaDevolucaoCheque? @relation(fields: [alineaDevolucaoId], references: [id])
-  movimentacao    MovimentacaoFinanceira @relation("MovimentacaoBaixa", fields: [movimentacaoId], references: [id])
+  // Terceiro do adiantamento consumido nesta Baixa — exigido quando `conta`
+  // tem `adiantamentoCliente`/`adiantamentoFornecedor` (nunca os dois
+  // juntos), pra saber qual linha de `SaldoAdiantamentoTerceiro` debitar (e
+  // recreditar se a Baixa for estornada).
+  adiantamentoClienteId    String? @map("adiantamento_cliente_id")
+  adiantamentoFornecedorId String? @map("adiantamento_fornecedor_id")
+
+  lancamento             LancamentoFinanceiro   @relation(fields: [lancamentoId], references: [id])
+  conta                  ContaFinanceira        @relation(fields: [contaId], references: [id])
+  alineaDevolucao        AlineaDevolucaoCheque? @relation(fields: [alineaDevolucaoId], references: [id])
+  movimentacao           MovimentacaoFinanceira @relation("MovimentacaoBaixa", fields: [movimentacaoId], references: [id])
+  usuario                Usuario?               @relation("BaixaUsuario", fields: [usuarioId], references: [id])
+  adiantamentoCliente    Cliente?               @relation("BaixaAdiantamentoCliente", fields: [adiantamentoClienteId], references: [id])
+  adiantamentoFornecedor Fornecedor?            @relation("BaixaAdiantamentoFornecedor", fields: [adiantamentoFornecedorId], references: [id])
 
   estorno               Estorno?
-  chequesUtilizados     ChequeTerceiroUtilizado[] @relation("DespesaPagaComCheque")
-  utilizadoComoChequeEm ChequeTerceiroUtilizado?  @relation("ChequeUtilizadoEmDespesa")
+  chequesUtilizados     ChequeTerceiroUtilizado[]      @relation("DespesaPagaComCheque")
+  utilizadoComoChequeEm ChequeTerceiroUtilizado?       @relation("ChequeUtilizadoEmDespesa")
+  movimentacoesComissao MovimentacaoComissaoVendedor[]
 
   @@index([contaId, dataBaixa])
   @@index([lancamentoId])
@@ -1306,23 +1377,42 @@ model TransferenciaEntreContas {
   data           DateTime
   estornada      Boolean                    @default(false)
 
-  // Terceiro do adiantamento: exigido em Server Action conforme a flag da
-  // contaDestino (adiantamentoCliente -> clienteId; adiantamentoFornecedor ->
-  // fornecedorId). Nunca os dois juntos; ambos null fora desse cenário.
-  clienteId    String? @map("cliente_id")
-  fornecedorId String? @map("fornecedor_id")
+  // Terceiro do adiantamento, um par por lado (origem/destino) — exigido em
+  // Server Action conforme a flag de CADA conta (adiantamentoCliente ->
+  // *ClienteId; adiantamentoFornecedor -> *FornecedorId). Nunca cliente E
+  // fornecedor juntos no mesmo lado; null fora desse cenário. Ver
+  // src/lib/regras-conta-transferencia.ts pra quais tipos de movimento
+  // permitem adiantamento em qual lado.
+  origemClienteId     String? @map("origem_cliente_id")
+  origemFornecedorId  String? @map("origem_fornecedor_id")
+  destinoClienteId    String? @map("destino_cliente_id")
+  destinoFornecedorId String? @map("destino_fornecedor_id")
 
   movSaidaId   String   @unique @map("mov_saida_id")
   movEntradaId String   @unique @map("mov_entrada_id")
   criadoEm     DateTime @default(now()) @map("criado_em")
+  usuarioId    String?  @map("usuario_id")
 
-  empresa      Empresa                @relation(fields: [empresaId], references: [id], onDelete: Restrict)
-  contaOrigem  ContaFinanceira        @relation("TransfOrigem", fields: [contaOrigemId], references: [id])
-  contaDestino ContaFinanceira        @relation("TransfDestino", fields: [contaDestinoId], references: [id])
-  cliente      Cliente?               @relation(fields: [clienteId], references: [id])
-  fornecedor   Fornecedor?            @relation(fields: [fornecedorId], references: [id])
-  movSaida     MovimentacaoFinanceira @relation("TransferenciaMovSaida", fields: [movSaidaId], references: [id])
-  movEntrada   MovimentacaoFinanceira @relation("TransferenciaMovEntrada", fields: [movEntradaId], references: [id])
+  motivoEstorno  String?   @map("motivo_estorno")
+  estornadoEm    DateTime? @map("estornado_em")
+  estornadoPorId String?   @map("estornado_por_id")
+  // Aponta pra transferência reversa criada ao estornar (mesmo padrão de
+  // Estorno×Baixa, mas sem model dedicado — a própria tabela se referencia).
+  estornoDeId    String?   @map("estorno_de_id")
+
+  empresa           Empresa                    @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  contaOrigem       ContaFinanceira            @relation("TransfOrigem", fields: [contaOrigemId], references: [id])
+  contaDestino      ContaFinanceira            @relation("TransfDestino", fields: [contaDestinoId], references: [id])
+  origemCliente     Cliente?                   @relation("TransfOrigemCliente", fields: [origemClienteId], references: [id])
+  origemFornecedor  Fornecedor?                @relation("TransfOrigemFornecedor", fields: [origemFornecedorId], references: [id])
+  destinoCliente    Cliente?                   @relation("TransfDestinoCliente", fields: [destinoClienteId], references: [id])
+  destinoFornecedor Fornecedor?                @relation("TransfDestinoFornecedor", fields: [destinoFornecedorId], references: [id])
+  movSaida          MovimentacaoFinanceira     @relation("TransferenciaMovSaida", fields: [movSaidaId], references: [id])
+  movEntrada        MovimentacaoFinanceira     @relation("TransferenciaMovEntrada", fields: [movEntradaId], references: [id])
+  usuario           Usuario?                   @relation("TransferenciaUsuario", fields: [usuarioId], references: [id])
+  estornadoPor      Usuario?                   @relation("TransferenciaEstornadoPor", fields: [estornadoPorId], references: [id])
+  estornoDe         TransferenciaEntreContas?  @relation("TransferenciaEstorno", fields: [estornoDeId], references: [id])
+  estornoPor        TransferenciaEntreContas[] @relation("TransferenciaEstorno")
 
   @@map("transferencias_entre_contas")
 }
@@ -1340,10 +1430,22 @@ model MovimentoAplicacao {
   dataMovimento DateTime               @map("data_movimento")
   estornado     Boolean                @default(false)
   criadoEm      DateTime               @default(now()) @map("criado_em")
+  usuarioId     String?                @map("usuario_id")
 
-  empresa   Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
-  daConta   ContaFinanceira? @relation("MovAplicacaoOrigem", fields: [daContaId], references: [id])
-  paraConta ContaFinanceira  @relation("MovAplicacaoDestino", fields: [paraContaId], references: [id])
+  motivoEstorno  String?   @map("motivo_estorno")
+  estornadoEm    DateTime? @map("estornado_em")
+  estornadoPorId String?   @map("estornado_por_id")
+  // Mesmo padrão de TransferenciaEntreContas.estornoDeId — a reversa é só
+  // outra linha desta mesma tabela, sem model de Estorno dedicado.
+  estornoDeId    String?   @map("estorno_de_id")
+
+  empresa      Empresa              @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  daConta      ContaFinanceira?     @relation("MovAplicacaoOrigem", fields: [daContaId], references: [id])
+  paraConta    ContaFinanceira      @relation("MovAplicacaoDestino", fields: [paraContaId], references: [id])
+  usuario      Usuario?             @relation("MovAplicacaoUsuario", fields: [usuarioId], references: [id])
+  estornadoPor Usuario?             @relation("MovAplicacaoEstornadoPor", fields: [estornadoPorId], references: [id])
+  estornoDe    MovimentoAplicacao?  @relation("MovAplicacaoEstorno", fields: [estornoDeId], references: [id])
+  estornoPor   MovimentoAplicacao[] @relation("MovAplicacaoEstorno")
 
   movimentacoes MovimentacaoFinanceira[]
 

@@ -30,6 +30,7 @@ export default async function EditarPlanoFinanceiroPage({ params }: { params: Pr
           descricao: plano.descricao,
           tipo: plano.tipo,
           natureza: plano.natureza,
+          permiteRetencao: plano.permiteRetencao,
         }}
       />
 

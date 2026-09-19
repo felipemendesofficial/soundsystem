@@ -17,9 +17,13 @@ export default async function EstornoBaixaPage({ params }: { params: Promise<{ i
   const baixaAtiva = await db.baixa.findFirst({ where: { lancamentoId: id, estornada: false } });
   if (!baixaAtiva) redirect(`/lancamentos-financeiros/${id}`);
 
+  const ehCheque = lancamento.tipoDocumento.startsWith("cheque_");
+
   const [contas, alineas] = await Promise.all([
     db.contaFinanceira.findMany({ where: { empresaId, ativo: true }, orderBy: { nome: "asc" } }),
-    db.alineaDevolucaoCheque.findMany({ where: { ativo: true }, orderBy: { codigo: "asc" } }),
+    ehCheque
+      ? db.alineaDevolucaoCheque.findMany({ where: { ativo: true }, orderBy: { codigo: "asc" } })
+      : Promise.resolve([]),
   ]);
 
   return (
@@ -31,6 +35,8 @@ export default async function EstornoBaixaPage({ params }: { params: Promise<{ i
         cancelarHref={`/lancamentos-financeiros/${id}`}
         contas={contas.map((c) => ({ id: c.id, label: c.nome }))}
         alineas={alineas.map((a) => ({ id: a.id, label: `${a.codigo} — ${a.descricao}` }))}
+        contaOriginalId={baixaAtiva.contaId}
+        ehCheque={ehCheque}
       />
     </div>
   );

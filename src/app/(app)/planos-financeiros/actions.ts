@@ -24,6 +24,7 @@ const criarSchema = z.object({
   segmento: z.string().trim().min(1, "Informe o código deste nível."),
   descricao: z.string().trim().min(1, "Informe a descrição.").transform(normalizarTexto),
   tipo: z.enum(["receita", "despesa"], { message: "Selecione o tipo." }),
+  permiteRetencao: z.enum(["on"]).nullish(),
 });
 
 /**
@@ -46,6 +47,7 @@ export async function criarPlanoFinanceiro(
     segmento: formData.get("segmento"),
     descricao: formData.get("descricao"),
     tipo: formData.get("tipo"),
+    permiteRetencao: formData.get("permiteRetencao"),
   });
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
@@ -81,6 +83,7 @@ export async function criarPlanoFinanceiro(
         tipo: parsed.data.tipo,
         natureza: naturezaParaNivel(nivel, mascara.segmentos.length),
         nivel,
+        permiteRetencao: parsed.data.permiteRetencao === "on",
       },
     });
   } catch {
@@ -94,6 +97,7 @@ export async function criarPlanoFinanceiro(
 const atualizarSchema = z.object({
   descricao: z.string().trim().min(1, "Informe a descrição.").transform(normalizarTexto),
   tipo: z.enum(["receita", "despesa"], { message: "Selecione o tipo." }),
+  permiteRetencao: z.enum(["on"]).nullish(),
 });
 
 export async function atualizarPlanoFinanceiro(
@@ -107,6 +111,7 @@ export async function atualizarPlanoFinanceiro(
   const parsed = atualizarSchema.safeParse({
     descricao: formData.get("descricao"),
     tipo: formData.get("tipo"),
+    permiteRetencao: formData.get("permiteRetencao"),
   });
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
@@ -115,7 +120,14 @@ export async function atualizarPlanoFinanceiro(
   });
   if (!plano) return { erro: "Conta não encontrada." };
 
-  await db.planoFinanceiro.update({ where: { id }, data: parsed.data });
+  await db.planoFinanceiro.update({
+    where: { id },
+    data: {
+      descricao: parsed.data.descricao,
+      tipo: parsed.data.tipo,
+      permiteRetencao: parsed.data.permiteRetencao === "on",
+    },
+  });
 
   revalidatePath("/planos-financeiros");
   redirect(`/planos-financeiros?mascaraId=${plano.mascaraId}`);

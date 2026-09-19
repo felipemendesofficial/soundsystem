@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { ChevronRight, Plus, ClipboardList, Calculator, Wrench } from "lucide-react";
+import { ChevronRight, Plus, ClipboardList, Calculator, Wrench, Wallet } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { podeGerenciarOrcamento, podeVerCusto } from "@/lib/permissions";
+import { podeGerenciarOrcamento, podeGerenciarFinanceiro, podeVerCusto } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
 function formatarMoeda(valor: number) {
@@ -191,6 +191,16 @@ export default async function HomePage() {
             titulo: "Orçamento de Compra",
             descricao: "Rateio de compra por fornecedor",
             icon: Calculator,
+          },
+        ]
+      : []),
+    ...(podeGerenciarFinanceiro(perfil)
+      ? [
+          {
+            href: "/lancamentos-financeiros",
+            titulo: "Lançamentos Financeiros",
+            descricao: "Contas a pagar e a receber",
+            icon: Wallet,
           },
         ]
       : []),

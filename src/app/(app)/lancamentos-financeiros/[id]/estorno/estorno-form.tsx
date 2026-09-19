@@ -22,32 +22,49 @@ export function EstornoForm({
   cancelarHref,
   contas,
   alineas,
+  contaOriginalId,
+  ehCheque,
 }: {
   action: Action;
   cancelarHref: string;
   contas: { id: string; label: string }[];
   alineas: { id: string; label: string }[];
+  contaOriginalId: string;
+  ehCheque: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   const [dataEstorno] = useState(hojeISO());
 
   const itensContas = Object.fromEntries(contas.map((c) => [c.id, c.label]));
   const itensAlineas = Object.fromEntries(alineas.map((a) => [a.id, a.label]));
+  const contaOriginal = contas.find((c) => c.id === contaOriginalId);
 
   return (
     <form action={formAction} className="max-w-md space-y-6">
       <div className="space-y-2">
         <Label htmlFor="contaId" className={labelClass}>Conta</Label>
-        <Select name="contaId" items={itensContas}>
-          <SelectTrigger id="contaId" className={`w-full ${inputClass}`}>
-            <SelectValue placeholder="Selecione..." />
-          </SelectTrigger>
-          <SelectContent>
-            {contas.map((c) => (
-              <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {ehCheque ? (
+          <Select name="contaId" defaultValue={contaOriginalId} items={itensContas}>
+            <SelectTrigger id="contaId" className={`w-full ${inputClass}`}>
+              <SelectValue placeholder="Selecione..." />
+            </SelectTrigger>
+            <SelectContent>
+              {contas.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <>
+            <input type="hidden" name="contaId" value={contaOriginalId} />
+            <div className={`flex items-center rounded-lg border border-input bg-muted px-3.5 text-base text-muted-foreground ${inputClass}`}>
+              {contaOriginal?.label ?? "-"}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              A conta do estorno acompanha a conta da Baixa — só pode ser trocada em estorno de cheque.
+            </p>
+          </>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -60,19 +77,21 @@ export function EstornoForm({
         <Input id="motivo" name="motivo" required className={inputClass} />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="alineaDevolucaoId" className={labelClass}>Alínea de Devolução (opcional)</Label>
-        <Select name="alineaDevolucaoId" items={itensAlineas}>
-          <SelectTrigger id="alineaDevolucaoId" className={`w-full ${inputClass}`}>
-            <SelectValue placeholder="Nenhuma" />
-          </SelectTrigger>
-          <SelectContent>
-            {alineas.map((a) => (
-              <SelectItem key={a.id} value={a.id}>{a.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {ehCheque && (
+        <div className="space-y-2">
+          <Label htmlFor="alineaDevolucaoId" className={labelClass}>Alínea de Devolução (opcional)</Label>
+          <Select name="alineaDevolucaoId" items={itensAlineas}>
+            <SelectTrigger id="alineaDevolucaoId" className={`w-full ${inputClass}`}>
+              <SelectValue placeholder="Nenhuma" />
+            </SelectTrigger>
+            <SelectContent>
+              {alineas.map((a) => (
+                <SelectItem key={a.id} value={a.id}>{a.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}
       <div className="flex gap-3">

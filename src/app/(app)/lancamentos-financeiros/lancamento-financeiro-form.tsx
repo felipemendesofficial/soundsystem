@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,9 @@ import {
 } from "@/components/ui/combobox";
 import { RateioEditor, type ItemRateio, type LinhaRateioEditor, novaChaveRateio } from "@/components/rateio-editor";
 import { cn } from "@/lib/utils";
+import { TIPOS_DOCUMENTO_LABEL, TIPOS_TAXA_CARTAO_LABEL } from "@/lib/financeiro-labels";
+import { erroContaParaBaixa } from "@/lib/regras-conta-baixa";
+import type { TipoDocumento, TipoConta } from "@/generated/prisma/client";
 import type { LancamentoFinanceiroFormState } from "./actions";
 
 type Action = (prevState: LancamentoFinanceiroFormState, formData: FormData) => Promise<LancamentoFinanceiroFormState>;
@@ -27,29 +30,118 @@ type Action = (prevState: LancamentoFinanceiroFormState, formData: FormData) => 
 type LinhaPlano = { key: string; conta: ItemRateio | null; percentual: string; centroCusto: LinhaRateioEditor[] };
 
 function linhaPlanoVazia(): LinhaPlano {
-  return { key: novaChaveRateio(), conta: null, percentual: "", centroCusto: [] };
+  return { key: novaChaveRateio(), conta: null, percentual: "100", centroCusto: [] };
+}
+
+function hojeISO() {
+  const hoje = new Date();
+  return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
 }
 
 const labelClass = "text-[15px] font-semibold";
 const inputClass = "h-11 px-3.5 text-base bg-card";
 
-const TIPOS_DOCUMENTO: Record<string, string> = {
-  especie: "Espécie",
-  cheque_vista: "Cheque à Vista",
-  cheque_prazo: "Cheque a Prazo",
-  cheque_devolvido: "Cheque Devolvido",
-  deposito_cartorio: "Depósito em Cartório",
-  nota_promissoria: "Nota Promissória",
-  deposito_bancario: "Depósito Bancário",
-  pix: "Pix",
-  cartao: "Cartão",
+// Campos de texto simples do formulário. React reseta todo <input> não controlado
+// assim que o <form action={...}> é submetido — mesmo quando a Server Action
+// retorna um erro de validação, sem redirecionar (ver requestFormReset no
+// react-dom). Por isso ficam num único objeto controlado: assim o valor digitado
+// sobrevive à tentativa que falhou, em vez de ser apagado da tela.
+type CamposTexto = {
+  historicoSimplificado: string;
+  historicoComplementar: string;
+  documento: string;
+  valorOriginal: string;
+  moraMes: string;
+  dataEmissao: string;
+  dataVencimento: string;
+  observacao: string;
+  chequeBanco: string;
+  chequeAgencia: string;
+  chequeNumeroCheque: string;
+  chequeContaCorrente: string;
+  chequeCgc: string;
+  chequeCpf: string;
+  chequeTelefone: string;
+  chequeTerceiro: string;
+  cartaoOperadora: string;
+  cartaoNumeroCartao: string;
+  cartaoNumeroAutorizacao: string;
 };
 
-const TIPOS_TAXA_CARTAO: Record<string, string> = {
-  a_vista: "À Vista",
-  antecipacao: "Antecipação",
-  parc_estabelecimento: "Parcelado — Estabelecimento",
-  parc_cliente: "Parcelado — Cliente",
+const CAMPOS_CHEQUE = [
+  "chequeBanco",
+  "chequeAgencia",
+  "chequeNumeroCheque",
+  "chequeContaCorrente",
+  "chequeCgc",
+  "chequeCpf",
+  "chequeTelefone",
+  "chequeTerceiro",
+] as const satisfies readonly (keyof CamposTexto)[];
+
+const CAMPOS_CARTAO = [
+  "cartaoOperadora",
+  "cartaoNumeroCartao",
+  "cartaoNumeroAutorizacao",
+] as const satisfies readonly (keyof CamposTexto)[];
+
+const camposTextoVazios: CamposTexto = {
+  historicoSimplificado: "",
+  historicoComplementar: "",
+  documento: "",
+  valorOriginal: "",
+  moraMes: "",
+  dataEmissao: "",
+  dataVencimento: "",
+  observacao: "",
+  chequeBanco: "",
+  chequeAgencia: "",
+  chequeNumeroCheque: "",
+  chequeContaCorrente: "",
+  chequeCgc: "",
+  chequeCpf: "",
+  chequeTelefone: "",
+  chequeTerceiro: "",
+  cartaoOperadora: "",
+  cartaoNumeroCartao: "",
+  cartaoNumeroAutorizacao: "",
+};
+
+/** Formato "achatado" (ids + percentuais como string) usado para pré-preencher o formulário na edição. */
+export type LancamentoFinanceiroDefaultValues = {
+  tipo: "receita" | "despesa";
+  natureza: "real" | "prevista";
+  historicoSimplificado: string;
+  historicoComplementar: string;
+  documento: string;
+  documentoFisico: boolean;
+  tipoDocumento: string;
+  portadorId: string | null;
+  contaPrevistaId: string | null;
+  clienteId: string | null;
+  fornecedorId: string | null;
+  valorOriginal: string;
+  moraMes: string;
+  dataEmissao: string;
+  dataVencimento: string;
+  processoId: string;
+  observacao: string;
+  rateioPlano: { planoId: string; percentual: string; centroCusto: { centroCustoId: string; percentual: string }[] }[];
+  rateioProcesso: { processoItemId: string; percentual: string }[];
+  retencoes: { planoId: string; percentual: string }[];
+  comissoes: { vendedorId: string; percentual: string }[];
+  chequeBanco: string;
+  chequeAgencia: string;
+  chequeNumeroCheque: string;
+  chequeContaCorrente: string;
+  chequeCgc: string;
+  chequeCpf: string;
+  chequeTelefone: string;
+  chequeTerceiro: string;
+  cartaoOperadora: string;
+  cartaoNumeroCartao: string;
+  cartaoNumeroAutorizacao: string;
+  cartaoTipoTaxa: string;
 };
 
 export function LancamentoFinanceiroForm({
@@ -60,44 +152,147 @@ export function LancamentoFinanceiroForm({
   contasFinanceiras,
   processos,
   processoPadraoId,
+  portadorPadraoId,
   planoFinanceiro,
   centroCusto,
   processoItens,
   vendedores,
+  defaultValues,
 }: {
   action: Action;
   clientes: ItemRateio[];
   fornecedores: ItemRateio[];
   portadores: ItemRateio[];
-  contasFinanceiras: ItemRateio[];
+  contasFinanceiras: (ItemRateio & { tipo: TipoConta; adiantamentoCliente: boolean; adiantamentoFornecedor: boolean })[];
   processos: ItemRateio[];
   processoPadraoId?: string | null;
-  planoFinanceiro: { id: string; label: string; tipo: "receita" | "despesa" }[];
+  portadorPadraoId?: string | null;
+  planoFinanceiro: { id: string; label: string; tipo: "receita" | "despesa"; permiteRetencao: boolean }[];
   centroCusto: ItemRateio[];
   processoItens: { id: string; label: string; processoId: string }[];
   vendedores: ItemRateio[];
+  defaultValues?: LancamentoFinanceiroDefaultValues;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
 
-  const [tipo, setTipo] = useState<"receita" | "despesa">("despesa");
-  const [tipoDocumento, setTipoDocumento] = useState<string>("especie");
-  const [processoId, setProcessoId] = useState<string>(processoPadraoId ?? "");
-  const [clienteId, setClienteId] = useState<string | null>(null);
-  const [fornecedorId, setFornecedorId] = useState<string | null>(null);
+  const processoIdInicial = defaultValues?.processoId ?? processoPadraoId ?? "";
 
-  const [rateioPlano, setRateioPlano] = useState<LinhaPlano[]>([]);
-  const [rateioProcesso, setRateioProcesso] = useState<LinhaRateioEditor[]>([]);
-  const [retencoes, setRetencoes] = useState<LinhaRateioEditor[]>([]);
-  const [comissoes, setComissoes] = useState<LinhaRateioEditor[]>([]);
+  const [tipo, setTipo] = useState<"receita" | "despesa">(defaultValues?.tipo ?? "despesa");
+  const [natureza, setNatureza] = useState<"real" | "prevista">(defaultValues?.natureza ?? "real");
+  const [tipoDocumento, setTipoDocumento] = useState<string>(defaultValues?.tipoDocumento ?? "especie");
+  const [processoId, setProcessoId] = useState<string>(processoIdInicial);
+  const [clienteId, setClienteId] = useState<string | null>(defaultValues?.clienteId ?? null);
+  const [fornecedorId, setFornecedorId] = useState<string | null>(defaultValues?.fornecedorId ?? null);
+  const [portadorId, setPortadorId] = useState<string | null>(defaultValues?.portadorId ?? portadorPadraoId ?? null);
+  const [contaPrevistaId, setContaPrevistaId] = useState<string | null>(defaultValues?.contaPrevistaId ?? null);
+  const [documentoFisico, setDocumentoFisico] = useState(defaultValues?.documentoFisico ?? false);
+  const [cartaoTipoTaxa, setCartaoTipoTaxa] = useState<string>(defaultValues?.cartaoTipoTaxa ?? "");
 
-  const itensClientes = Object.fromEntries(clientes.map((c) => [c.id, c.label]));
-  const itensFornecedores = Object.fromEntries(fornecedores.map((f) => [f.id, f.label]));
+  function selecionarTipoDocumento(novoTipo: string) {
+    setTipoDocumento((atual) => {
+      // Limpa os campos da seção que está sendo escondida — senão eles ficam
+      // "presos" no estado (mesmo sem aparecer na tela) e continuam sendo
+      // validados/enviados como se ainda fizessem sentido pro tipo novo.
+      if (atual.startsWith("cheque_") && !novoTipo.startsWith("cheque_")) {
+        setCampos((c) => ({ ...c, ...Object.fromEntries(CAMPOS_CHEQUE.map((campo) => [campo, ""])) }));
+      }
+      if (atual === "cartao" && novoTipo !== "cartao") {
+        setCampos((c) => ({ ...c, ...Object.fromEntries(CAMPOS_CARTAO.map((campo) => [campo, ""])) }));
+        setCartaoTipoTaxa("");
+      }
+      return novoTipo;
+    });
+  }
+
+  const [campos, setCampos] = useState<CamposTexto>(() => ({
+    historicoSimplificado: defaultValues?.historicoSimplificado ?? camposTextoVazios.historicoSimplificado,
+    historicoComplementar: defaultValues?.historicoComplementar ?? camposTextoVazios.historicoComplementar,
+    documento: defaultValues?.documento ?? camposTextoVazios.documento,
+    valorOriginal: defaultValues?.valorOriginal ?? camposTextoVazios.valorOriginal,
+    moraMes: defaultValues?.moraMes ?? camposTextoVazios.moraMes,
+    dataEmissao: defaultValues?.dataEmissao ?? hojeISO(),
+    dataVencimento: defaultValues?.dataVencimento ?? camposTextoVazios.dataVencimento,
+    observacao: defaultValues?.observacao ?? camposTextoVazios.observacao,
+    chequeBanco: defaultValues?.chequeBanco ?? camposTextoVazios.chequeBanco,
+    chequeAgencia: defaultValues?.chequeAgencia ?? camposTextoVazios.chequeAgencia,
+    chequeNumeroCheque: defaultValues?.chequeNumeroCheque ?? camposTextoVazios.chequeNumeroCheque,
+    chequeContaCorrente: defaultValues?.chequeContaCorrente ?? camposTextoVazios.chequeContaCorrente,
+    chequeCgc: defaultValues?.chequeCgc ?? camposTextoVazios.chequeCgc,
+    chequeCpf: defaultValues?.chequeCpf ?? camposTextoVazios.chequeCpf,
+    chequeTelefone: defaultValues?.chequeTelefone ?? camposTextoVazios.chequeTelefone,
+    chequeTerceiro: defaultValues?.chequeTerceiro ?? camposTextoVazios.chequeTerceiro,
+    cartaoOperadora: defaultValues?.cartaoOperadora ?? camposTextoVazios.cartaoOperadora,
+    cartaoNumeroCartao: defaultValues?.cartaoNumeroCartao ?? camposTextoVazios.cartaoNumeroCartao,
+    cartaoNumeroAutorizacao: defaultValues?.cartaoNumeroAutorizacao ?? camposTextoVazios.cartaoNumeroAutorizacao,
+  }));
+  function campoTexto(nome: keyof CamposTexto) {
+    return {
+      value: campos[nome],
+      onChange: (e: ChangeEvent<HTMLInputElement>) => setCampos((atual) => ({ ...atual, [nome]: e.target.value })),
+    };
+  }
+
+  const [rateioPlano, setRateioPlano] = useState<LinhaPlano[]>(() =>
+    (defaultValues?.rateioPlano ?? []).map((l) => ({
+      key: novaChaveRateio(),
+      conta: planoFinanceiro.find((p) => p.id === l.planoId) ?? null,
+      percentual: l.percentual,
+      centroCusto: l.centroCusto.map((cc) => ({
+        key: novaChaveRateio(),
+        conta: centroCusto.find((c) => c.id === cc.centroCustoId) ?? null,
+        percentual: cc.percentual,
+      })),
+    }))
+  );
+  const [rateioProcesso, setRateioProcesso] = useState<LinhaRateioEditor[]>(() => {
+    if (defaultValues) {
+      return defaultValues.rateioProcesso.map((l) => ({
+        key: novaChaveRateio(),
+        conta: processoItens.find((i) => i.id === l.processoItemId) ?? null,
+        percentual: l.percentual,
+      }));
+    }
+    const itensDoProcesso = processoItens.filter((i) => i.processoId === processoIdInicial);
+    return itensDoProcesso.length === 1
+      ? [{ key: novaChaveRateio(), conta: itensDoProcesso[0], percentual: "100" }]
+      : [];
+  });
+  const [retencoes, setRetencoes] = useState<LinhaRateioEditor[]>(() =>
+    (defaultValues?.retencoes ?? []).map((l) => ({
+      key: novaChaveRateio(),
+      conta: planoFinanceiro.find((p) => p.id === l.planoId) ?? null,
+      percentual: l.percentual,
+    }))
+  );
+  const [comissoes, setComissoes] = useState<LinhaRateioEditor[]>(() =>
+    (defaultValues?.comissoes ?? []).map((l) => ({
+      key: novaChaveRateio(),
+      conta: vendedores.find((v) => v.id === l.vendedorId) ?? null,
+      percentual: l.percentual,
+    }))
+  );
+
   const itensPortadores = Object.fromEntries(portadores.map((p) => [p.id, p.label]));
-  const itensContas = Object.fromEntries(contasFinanceiras.map((c) => [c.id, c.label]));
   const itensProcessos = Object.fromEntries(processos.map((p) => [p.id, p.label]));
+
+  // Mesma matriz de compatibilidade conta × documento × tipo usada na Baixa
+  // (item 9 do pedido) — evita escolher aqui uma Conta Prevista que a Baixa
+  // real nunca aceitaria depois.
+  const contasFinanceirasFiltradas = useMemo(
+    () =>
+      contasFinanceiras.filter(
+        (c) => !erroContaParaBaixa(c, { tipoLancamento: tipo, tipoDocumento: tipoDocumento as TipoDocumento })
+      ),
+    [contasFinanceiras, tipo, tipoDocumento]
+  );
+  const itensContas = Object.fromEntries(contasFinanceirasFiltradas.map((c) => [c.id, c.label]));
 
   const planoFinanceiroFiltrado = useMemo(
     () => planoFinanceiro.filter((p) => p.tipo === tipo).map((p) => ({ id: p.id, label: p.label })),
+    [planoFinanceiro, tipo]
+  );
+  const planoRetencaoFiltrado = useMemo(
+    () => planoFinanceiro.filter((p) => p.tipo === tipo && p.permiteRetencao).map((p) => ({ id: p.id, label: p.label })),
     [planoFinanceiro, tipo]
   );
   const processoItensFiltrados = useMemo(
@@ -105,8 +300,26 @@ export function LancamentoFinanceiroForm({
     [processoItens, processoId]
   );
 
+  function selecionarProcesso(novoProcessoId: string) {
+    setProcessoId(novoProcessoId);
+    setRateioProcesso((atual) => {
+      if (atual.length > 0) return atual;
+      const itensDoProcesso = processoItens.filter((i) => i.processoId === novoProcessoId);
+      return itensDoProcesso.length === 1
+        ? [{ key: novaChaveRateio(), conta: itensDoProcesso[0], percentual: "100" }]
+        : atual;
+    });
+  }
+
   function adicionarLinhaPlano() {
-    setRateioPlano((atual) => [...atual, linhaPlanoVazia()]);
+    setRateioPlano((atual) => [
+      ...atual,
+      {
+        ...linhaPlanoVazia(),
+        centroCusto:
+          centroCusto.length === 1 ? [{ key: novaChaveRateio(), conta: centroCusto[0], percentual: "100" }] : [],
+      },
+    ]);
   }
   function removerLinhaPlano(key: string) {
     setRateioPlano((atual) => atual.filter((l) => l.key !== key));
@@ -143,32 +356,89 @@ export function LancamentoFinanceiroForm({
     <>
       <form id="lancamento-financeiro-form" action={formAction} className="max-w-lg space-y-6">
         <input type="hidden" name="tipo" value={tipo} />
+        <input type="hidden" name="natureza" value={natureza} />
         <input type="hidden" name="tipoDocumento" value={tipoDocumento} />
         <input type="hidden" name="processoId" value={processoId} />
         <input type="hidden" name="clienteId" value={clienteId ?? ""} />
         <input type="hidden" name="fornecedorId" value={fornecedorId ?? ""} />
+        <input type="hidden" name="portadorId" value={portadorId ?? ""} />
+        <input type="hidden" name="contaPrevistaId" value={contaPrevistaId ?? ""} />
+        <input type="hidden" name="cartaoTipoTaxa" value={cartaoTipoTaxa} />
         <input type="hidden" name="rateioPlano" value={rateioPlanoSerializado} />
         <input type="hidden" name="rateioProcesso" value={rateioProcessoSerializado} />
         <input type="hidden" name="retencoes" value={retencoesSerializadas} />
         <input type="hidden" name="comissoes" value={comissoesSerializadas} />
 
+        <div className="space-y-2">
+          <Label htmlFor="tipoDocumentoSelect" className={labelClass}>Tipo de Documento</Label>
+          <Select value={tipoDocumento} items={TIPOS_DOCUMENTO_LABEL} onValueChange={(v) => v && selecionarTipoDocumento(v)}>
+            <SelectTrigger id="tipoDocumentoSelect" className={`w-full ${inputClass}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(TIPOS_DOCUMENTO_LABEL).map(([valor, rotulo]) => (
+                <SelectItem key={valor} value={valor}>{rotulo}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">Define quais contas ficam disponíveis para a Conta Prevista mais abaixo.</p>
+        </div>
+
         <div className="grid grid-cols-2 gap-2">
-          <Button type="button" variant={tipo === "despesa" ? "default" : "outline"} onClick={() => setTipo("despesa")}>
+          <Button
+            type="button"
+            variant={tipo === "despesa" ? "default" : "outline"}
+            disabled={!!defaultValues}
+            onClick={() => {
+              setTipo("despesa");
+              setClienteId(null);
+            }}
+          >
             Despesa
           </Button>
-          <Button type="button" variant={tipo === "receita" ? "default" : "outline"} onClick={() => setTipo("receita")}>
+          <Button
+            type="button"
+            variant={tipo === "receita" ? "default" : "outline"}
+            disabled={!!defaultValues}
+            onClick={() => {
+              setTipo("receita");
+              setFornecedorId(null);
+            }}
+          >
             Receita
           </Button>
+        </div>
+        {defaultValues && (
+          <p className="-mt-4 text-xs text-muted-foreground">
+            Tipo não pode ser alterado depois de criado (o rateio do Plano Financeiro depende dele).
+          </p>
+        )}
+
+        <div className="space-y-2">
+          <Label className={labelClass}>Natureza</Label>
+          <div className="grid grid-cols-2 gap-2">
+            <Button type="button" variant={natureza === "real" ? "default" : "outline"} onClick={() => setNatureza("real")}>
+              Real
+            </Button>
+            <Button type="button" variant={natureza === "prevista" ? "default" : "outline"} onClick={() => setNatureza("prevista")}>
+              Previsão
+            </Button>
+          </div>
+          {natureza === "prevista" && (
+            <p className="text-xs text-muted-foreground">
+              Uma previsão não pode receber Baixa até ser confirmada (vira Real) na tela do lançamento.
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="historicoSimplificado" className={labelClass}>Histórico</Label>
-          <Input id="historicoSimplificado" name="historicoSimplificado" required className={inputClass} />
+          <Input id="historicoSimplificado" name="historicoSimplificado" required className={inputClass} {...campoTexto("historicoSimplificado")} />
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="historicoComplementar" className={labelClass}>Histórico Complementar (opcional)</Label>
-          <Input id="historicoComplementar" name="historicoComplementar" className={inputClass} />
+          <Input id="historicoComplementar" name="historicoComplementar" className={inputClass} {...campoTexto("historicoComplementar")} />
         </div>
 
         <div className="space-y-2">
@@ -206,28 +476,36 @@ export function LancamentoFinanceiroForm({
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
             <Label htmlFor="valorOriginal" className={labelClass}>Valor (R$)</Label>
-            <Input id="valorOriginal" name="valorOriginal" type="number" step="0.01" min="0.01" required className={inputClass} />
+            <Input id="valorOriginal" name="valorOriginal" type="number" step="0.01" min="0.01" required className={inputClass} {...campoTexto("valorOriginal")} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="moraMes" className={labelClass}>Mora ao Mês (%)</Label>
-            <Input id="moraMes" name="moraMes" type="number" step="0.01" min="0" className={inputClass} />
+            <Input id="moraMes" name="moraMes" type="number" step="0.01" min="0" className={inputClass} {...campoTexto("moraMes")} />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
             <Label htmlFor="dataEmissao" className={labelClass}>Emissão</Label>
-            <Input id="dataEmissao" name="dataEmissao" type="date" required className={inputClass} />
+            <Input id="dataEmissao" name="dataEmissao" type="date" required className={inputClass} {...campoTexto("dataEmissao")} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="dataVencimento" className={labelClass}>Vencimento</Label>
-            <Input id="dataVencimento" name="dataVencimento" type="date" required className={inputClass} />
+            <Input
+              id="dataVencimento"
+              name="dataVencimento"
+              type="date"
+              required
+              min={campos.dataEmissao || undefined}
+              className={inputClass}
+              {...campoTexto("dataVencimento")}
+            />
           </div>
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="processoIdSelect" className={labelClass}>Processo</Label>
-          <Select value={processoId} items={itensProcessos} onValueChange={(v) => v && setProcessoId(v)}>
+          <Select value={processoId} items={itensProcessos} onValueChange={(v) => v && selecionarProcesso(v)}>
             <SelectTrigger id="processoIdSelect" className={`w-full ${inputClass}`}>
               <SelectValue placeholder="Selecione..." />
             </SelectTrigger>
@@ -242,7 +520,7 @@ export function LancamentoFinanceiroForm({
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
             <Label htmlFor="portadorId" className={labelClass}>Portador (opcional)</Label>
-            <Select name="portadorId" items={itensPortadores}>
+            <Select value={portadorId ?? ""} items={itensPortadores} onValueChange={(v) => setPortadorId(v || null)}>
               <SelectTrigger id="portadorId" className={`w-full ${inputClass}`}>
                 <SelectValue placeholder="Nenhum" />
               </SelectTrigger>
@@ -255,12 +533,12 @@ export function LancamentoFinanceiroForm({
           </div>
           <div className="space-y-2">
             <Label htmlFor="contaPrevistaId" className={labelClass}>Conta Prevista (opcional)</Label>
-            <Select name="contaPrevistaId" items={itensContas}>
+            <Select value={contaPrevistaId ?? ""} items={itensContas} onValueChange={(v) => setContaPrevistaId(v || null)}>
               <SelectTrigger id="contaPrevistaId" className={`w-full ${inputClass}`}>
                 <SelectValue placeholder="Nenhuma" />
               </SelectTrigger>
               <SelectContent>
-                {contasFinanceiras.map((c) => (
+                {contasFinanceirasFiltradas.map((c) => (
                   <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
                 ))}
               </SelectContent>
@@ -270,69 +548,37 @@ export function LancamentoFinanceiroForm({
 
         <div className="space-y-2">
           <Label htmlFor="documento" className={labelClass}>Documento (opcional)</Label>
-          <Input id="documento" name="documento" className={inputClass} />
+          <Input id="documento" name="documento" className={inputClass} {...campoTexto("documento")} />
         </div>
         <div className="flex items-center gap-3">
-          <Checkbox id="documentoFisico" name="documentoFisico" />
+          <Checkbox id="documentoFisico" name="documentoFisico" checked={documentoFisico} onCheckedChange={setDocumentoFisico} />
           <Label htmlFor="documentoFisico" className={labelClass}>Documento físico está com a empresa</Label>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="tipoDocumentoSelect" className={labelClass}>Tipo de Documento</Label>
-          <Select value={tipoDocumento} items={TIPOS_DOCUMENTO} onValueChange={(v) => v && setTipoDocumento(v)}>
-            <SelectTrigger id="tipoDocumentoSelect" className={`w-full ${inputClass}`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(TIPOS_DOCUMENTO).map(([valor, rotulo]) => (
-                <SelectItem key={valor} value={valor}>{rotulo}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
 
         {tipoDocumento.startsWith("cheque_") && (
           <div className="space-y-3 rounded-lg border border-border bg-card p-4">
             <Label className={labelClass}>Dados do Cheque</Label>
             <div className="grid grid-cols-2 gap-3">
-              <Input name="chequeBanco" placeholder="Banco" className="h-10 bg-background" />
-              <Input name="chequeAgencia" placeholder="Agência" className="h-10 bg-background" />
+              <Input name="chequeBanco" placeholder="Banco" className="h-10 bg-background" {...campoTexto("chequeBanco")} />
+              <Input name="chequeAgencia" placeholder="Agência" className="h-10 bg-background" {...campoTexto("chequeAgencia")} />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Input name="chequeNumeroCheque" placeholder="Número do Cheque" className="h-10 bg-background" />
-              <Input name="chequeContaCorrente" placeholder="Conta Corrente" className="h-10 bg-background" />
+              <Input name="chequeNumeroCheque" placeholder="Número do Cheque" className="h-10 bg-background" {...campoTexto("chequeNumeroCheque")} />
+              <Input name="chequeContaCorrente" placeholder="Conta Corrente" className="h-10 bg-background" {...campoTexto("chequeContaCorrente")} />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Input name="chequeCgc" placeholder="CGC" className="h-10 bg-background" />
-              <Input name="chequeCpf" placeholder="CPF" className="h-10 bg-background" />
+              <Input name="chequeCgc" placeholder="CGC" className="h-10 bg-background" {...campoTexto("chequeCgc")} />
+              <Input name="chequeCpf" placeholder="CPF" className="h-10 bg-background" {...campoTexto("chequeCpf")} />
             </div>
-            <Input name="chequeTelefone" placeholder="Telefone" className="h-10 bg-background" />
-            <p className="text-xs text-muted-foreground">Se o cheque for de terceiro (não do {tipo === "despesa" ? "fornecedor" : "cliente"} acima), informe abaixo — só um dos dois.</p>
+            <Input name="chequeTelefone" placeholder="Telefone" className="h-10 bg-background" {...campoTexto("chequeTelefone")} />
             <div className="space-y-1">
-              <Label className="text-xs">Terceiro — Cliente</Label>
-              <Select name="chequeTerceiroClienteId" items={itensClientes}>
-                <SelectTrigger className="h-10 w-full bg-background">
-                  <SelectValue placeholder="Nenhum" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clientes.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Terceiro — Fornecedor</Label>
-              <Select name="chequeTerceiroFornecedorId" items={itensFornecedores}>
-                <SelectTrigger className="h-10 w-full bg-background">
-                  <SelectValue placeholder="Nenhum" />
-                </SelectTrigger>
-                <SelectContent>
-                  {fornecedores.map((f) => (
-                    <SelectItem key={f.id} value={f.id}>{f.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label className="text-xs">Terceiro (opcional)</Label>
+              <Input
+                name="chequeTerceiro"
+                placeholder={`Nome do terceiro, se não for o ${tipo === "despesa" ? "fornecedor" : "cliente"} acima`}
+                className="h-10 bg-background"
+                {...campoTexto("chequeTerceiro")}
+              />
             </div>
           </div>
         )}
@@ -340,20 +586,17 @@ export function LancamentoFinanceiroForm({
         {tipoDocumento === "cartao" && (
           <div className="space-y-3 rounded-lg border border-border bg-card p-4">
             <Label className={labelClass}>Dados do Cartão</Label>
-            <Input name="cartaoOperadora" placeholder="Operadora" className="h-10 bg-background" />
-            <div className="grid grid-cols-2 gap-3">
-              <Input name="cartaoNumeroCartao" placeholder="Número do Cartão" className="h-10 bg-background" />
-              <Input name="cartaoLoteRv" placeholder="Lote RV" className="h-10 bg-background" />
-            </div>
-            <Input name="cartaoNumeroAutorizacao" placeholder="Número de Autorização" className="h-10 bg-background" />
+            <Input name="cartaoOperadora" placeholder="Operadora" className="h-10 bg-background" {...campoTexto("cartaoOperadora")} />
+            <Input name="cartaoNumeroCartao" placeholder="Número do Cartão" className="h-10 bg-background" {...campoTexto("cartaoNumeroCartao")} />
+            <Input name="cartaoNumeroAutorizacao" placeholder="Número de Autorização" className="h-10 bg-background" {...campoTexto("cartaoNumeroAutorizacao")} />
             <div className="space-y-1">
               <Label className="text-xs">Tipo de Taxa</Label>
-              <Select name="cartaoTipoTaxa" items={TIPOS_TAXA_CARTAO}>
+              <Select value={cartaoTipoTaxa} items={TIPOS_TAXA_CARTAO_LABEL} onValueChange={(v) => setCartaoTipoTaxa(v ?? "")}>
                 <SelectTrigger className="h-10 w-full bg-background">
                   <SelectValue placeholder="Nenhum" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(TIPOS_TAXA_CARTAO).map(([valor, rotulo]) => (
+                  {Object.entries(TIPOS_TAXA_CARTAO_LABEL).map(([valor, rotulo]) => (
                     <SelectItem key={valor} value={valor}>{rotulo}</SelectItem>
                   ))}
                 </SelectContent>
@@ -421,6 +664,7 @@ export function LancamentoFinanceiroForm({
                   onChange={(novasLinhas) => atualizarLinhaPlano(linha.key, { centroCusto: novasLinhas })}
                   exigirSoma100={linha.centroCusto.length > 0}
                   placeholderBusca="Buscar centro de custo..."
+                  percentualPadrao="100"
                 />
               </li>
             ))}
@@ -440,15 +684,17 @@ export function LancamentoFinanceiroForm({
           onChange={setRateioProcesso}
           placeholderBusca="Buscar item do processo..."
           vazio="Selecione um processo com itens cadastrados."
+          percentualPadrao="100"
         />
 
         <RateioEditor
           titulo="Retenções (opcional)"
-          itens={planoFinanceiroFiltrado}
+          itens={planoRetencaoFiltrado}
           linhas={retencoes}
           onChange={setRetencoes}
           exigirSoma100={false}
           placeholderBusca="Buscar tributo..."
+          vazio="Nenhuma conta marcada como Retenção neste plano financeiro."
         />
 
         <RateioEditor
@@ -462,7 +708,7 @@ export function LancamentoFinanceiroForm({
 
         <div className="space-y-2">
           <Label htmlFor="observacao" className={labelClass}>Observação (opcional)</Label>
-          <Input id="observacao" name="observacao" className={inputClass} />
+          <Input id="observacao" name="observacao" className={inputClass} {...campoTexto("observacao")} />
         </div>
 
         {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}
@@ -470,7 +716,7 @@ export function LancamentoFinanceiroForm({
       </form>
       <div className="fixed bottom-[57px] left-0 right-0 z-30 mx-auto flex w-full max-w-[400px] items-center gap-2 border-t border-border bg-card px-[18px] py-2.5">
         <Button type="submit" form="lancamento-financeiro-form" disabled={pending} size="sm" className="flex-none whitespace-nowrap">
-          {pending ? "Salvando..." : "Salvar"}
+          {pending ? "Salvando..." : defaultValues ? "Salvar alterações" : "Salvar"}
         </Button>
         <Button type="button" variant="outline" size="sm" render={<Link href="/lancamentos-financeiros" />} className="flex-none whitespace-nowrap">
           Cancelar

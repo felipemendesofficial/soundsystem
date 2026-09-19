@@ -10,6 +10,7 @@ import { podeGerenciarFinanceiro } from "@/lib/permissions";
 import { normalizarTexto } from "@/lib/texto";
 import { validarSomaPercentual, distribuirValor } from "@/lib/rateio-financeiro";
 import { registrarBaixa, registrarEstorno, obterUltimoFechamentoAtivo } from "@/lib/financeiro-ledger";
+import { erroContaParaBaixa } from "@/lib/regras-conta-baixa";
 
 export type LancamentoFinanceiroFormState = { erro?: string };
 export type BaixaFormState = { erro?: string };
@@ -86,8 +87,9 @@ const TIPOS_DOCUMENTO = [
   "cartao",
 ] as const;
 
-const criarSchema = z.object({
+const lancamentoSchema = z.object({
   tipo: z.enum(["receita", "despesa"], { message: "Selecione o tipo." }),
+  natureza: z.enum(["real", "prevista"], { message: "Selecione a natureza." }),
   historicoSimplificado: z.string().trim().min(1, "Informe o histórico.").transform(normalizarTexto),
   historicoComplementar: z.string().trim().transform(normalizarTexto).optional(),
   documento: z.string().trim().optional(),
@@ -107,41 +109,29 @@ const criarSchema = z.object({
   rateioProcesso: parseJsonArray(rateioProcessoLinhaSchema, { min: 1, label: "Rateio de Processo" }),
   retencoes: parseJsonArray(retencaoLinhaSchema, { min: 0, label: "Retenções" }),
   comissoes: parseJsonArray(comissaoLinhaSchema, { min: 0, label: "Comissões" }),
-  chequeBanco: z.string().trim().optional(),
-  chequeAgencia: z.string().trim().optional(),
-  chequeNumeroCheque: z.string().trim().optional(),
-  chequeContaCorrente: z.string().trim().optional(),
-  chequeCgc: z.string().trim().optional(),
-  chequeCpf: z.string().trim().optional(),
-  chequeTelefone: z.string().trim().optional(),
-  chequeTerceiroClienteId: z.string().trim().optional(),
-  chequeTerceiroFornecedorId: z.string().trim().optional(),
-  cartaoOperadora: z.string().trim().optional(),
-  cartaoNumeroCartao: z.string().trim().optional(),
-  cartaoLoteRv: z.string().trim().optional(),
-  cartaoNumeroAutorizacao: z.string().trim().optional(),
+  chequeBanco: z.string().trim().nullish(),
+  chequeAgencia: z.string().trim().nullish(),
+  chequeNumeroCheque: z.string().trim().nullish(),
+  chequeContaCorrente: z.string().trim().nullish(),
+  chequeCgc: z.string().trim().nullish(),
+  chequeCpf: z.string().trim().nullish(),
+  chequeTelefone: z.string().trim().nullish(),
+  chequeTerceiro: z.string().trim().nullish(),
+  cartaoOperadora: z.string().trim().nullish(),
+  cartaoNumeroCartao: z.string().trim().nullish(),
+  cartaoNumeroAutorizacao: z.string().trim().nullish(),
   cartaoTipoTaxa: z.enum(["a_vista", "antecipacao", "parc_estabelecimento", "parc_cliente"]).optional(),
+}).refine((dados) => dados.dataVencimento >= dados.dataEmissao, {
+  message: "Vencimento não pode ser anterior à emissão.",
+  path: ["dataVencimento"],
 });
 
-/**
- * Cadastra um Lançamento Financeiro (conta a pagar/receber) com o rateio
- * triplo. Nunca move dinheiro nem grava no ledger — isso só acontece na
- * Baixa (`darBaixaLancamento`), mesmo espírito do estoque (um Lançamento de
- * compra só afeta o Kardex quando confirmado). `natureza` fica sempre `real`
- * nesta leva — `prevista` (previsão orçamentária) exige um fluxo de
- * conversão que ainda não existe.
- */
-export async function criarLancamentoFinanceiro(
-  _prev: LancamentoFinanceiroFormState,
-  formData: FormData
-): Promise<LancamentoFinanceiroFormState> {
-  const permissao = await exigirPermissao();
-  if ("erro" in permissao) return permissao;
-  const empresaId = permissao.session.user.empresaId!;
-  const grupoId = permissao.session.user.grupoId!;
+type DadosLancamento = z.infer<typeof lancamentoSchema>;
 
-  const parsed = criarSchema.safeParse({
+function lerFormData(formData: FormData) {
+  return lancamentoSchema.safeParse({
     tipo: formData.get("tipo"),
+    natureza: formData.get("natureza"),
     historicoSimplificado: formData.get("historicoSimplificado"),
     historicoComplementar: formData.get("historicoComplementar"),
     documento: formData.get("documento"),
@@ -168,26 +158,35 @@ export async function criarLancamentoFinanceiro(
     chequeCgc: formData.get("chequeCgc"),
     chequeCpf: formData.get("chequeCpf"),
     chequeTelefone: formData.get("chequeTelefone"),
-    chequeTerceiroClienteId: formData.get("chequeTerceiroClienteId"),
-    chequeTerceiroFornecedorId: formData.get("chequeTerceiroFornecedorId"),
+    chequeTerceiro: formData.get("chequeTerceiro"),
     cartaoOperadora: formData.get("cartaoOperadora"),
     cartaoNumeroCartao: formData.get("cartaoNumeroCartao"),
-    cartaoLoteRv: formData.get("cartaoLoteRv"),
     cartaoNumeroAutorizacao: formData.get("cartaoNumeroAutorizacao"),
     cartaoTipoTaxa: formData.get("cartaoTipoTaxa") || undefined,
   });
-  if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
-  const dados = parsed.data;
+}
+
+/**
+ * Valida as regras de negócio (contraparte × tipo, somas de rateio, existência
+ * e ativação das contas referenciadas) e devolve os valores já distribuídos —
+ * compartilhado entre criar/atualizar pra não duplicar essa validação.
+ */
+async function validarRegrasDeNegocio(dados: DadosLancamento, ctx: { empresaId: string; grupoId: string }) {
+  const { empresaId, grupoId } = ctx;
 
   if (dados.tipo === "despesa") {
-    if (!dados.fornecedorId) return { erro: "Selecione o fornecedor." };
-    if (dados.clienteId) return { erro: "Uma despesa não pode ter cliente." };
+    if (!dados.fornecedorId) return { erro: "Selecione o fornecedor." } as const;
+    if (dados.clienteId) return { erro: "Uma despesa não pode ter cliente." } as const;
   } else {
-    if (!dados.clienteId) return { erro: "Selecione o cliente." };
-    if (dados.fornecedorId) return { erro: "Uma receita não pode ter fornecedor." };
+    if (!dados.clienteId) return { erro: "Selecione o cliente." } as const;
+    if (dados.fornecedorId) return { erro: "Uma receita não pode ter fornecedor." } as const;
   }
-  if (dados.chequeTerceiroClienteId && dados.chequeTerceiroFornecedorId) {
-    return { erro: "O cheque de terceiro só pode ter um dono: cliente ou fornecedor." };
+
+  if (dados.contaPrevistaId) {
+    const contaPrevista = await db.contaFinanceira.findFirst({ where: { id: dados.contaPrevistaId, empresaId } });
+    if (!contaPrevista) return { erro: "Conta prevista não encontrada." } as const;
+    const erroContaPrevista = erroContaParaBaixa(contaPrevista, { tipoLancamento: dados.tipo, tipoDocumento: dados.tipoDocumento });
+    if (erroContaPrevista) return { erro: erroContaPrevista } as const;
   }
 
   try {
@@ -199,47 +198,52 @@ export async function criarLancamentoFinanceiro(
     }
     validarSomaPercentual(dados.rateioProcesso.map((l) => ({ percentual: new Prisma.Decimal(l.percentual) })));
   } catch (e) {
-    return { erro: e instanceof Error ? e.message : "Rateio inválido." };
+    return { erro: e instanceof Error ? e.message : "Rateio inválido." } as const;
   }
 
   const processo = await db.processo.findFirst({ where: { id: dados.processoId, empresaId } });
-  if (!processo) return { erro: "Processo não encontrado." };
+  if (!processo) return { erro: "Processo não encontrado." } as const;
 
   const planoIds = dados.rateioPlano.map((l) => l.planoId);
   const planosValidos = await db.planoFinanceiro.count({
     where: { id: { in: planoIds }, grupoId, natureza: "analitica", ativo: true, tipo: dados.tipo },
   });
-  if (planosValidos !== planoIds.length) return { erro: "Uma ou mais contas do rateio de Plano Financeiro são inválidas." };
+  if (planosValidos !== planoIds.length) {
+    return { erro: "Uma ou mais contas do rateio de Plano Financeiro são inválidas." } as const;
+  }
 
   const centroCustoIds = dados.rateioPlano.flatMap((l) => l.centroCusto.map((cc) => cc.centroCustoId));
   if (centroCustoIds.length > 0) {
     const centrosValidos = await db.centroCusto.count({
       where: { id: { in: centroCustoIds }, grupoId, natureza: "analitica", ativo: true },
     });
-    if (centrosValidos !== centroCustoIds.length) return { erro: "Uma ou mais contas do rateio de Centro de Custo são inválidas." };
+    if (centrosValidos !== centroCustoIds.length) {
+      return { erro: "Uma ou mais contas do rateio de Centro de Custo são inválidas." } as const;
+    }
   }
 
   const processoItemIds = dados.rateioProcesso.map((l) => l.processoItemId);
   const itensValidos = await db.processoItem.count({
     where: { id: { in: processoItemIds }, processoId: dados.processoId, natureza: "analitica", ativo: true },
   });
-  if (itensValidos !== processoItemIds.length) return { erro: "Um ou mais itens do rateio de Processo são inválidos." };
+  if (itensValidos !== processoItemIds.length) {
+    return { erro: "Um ou mais itens do rateio de Processo são inválidos." } as const;
+  }
 
   if (dados.retencoes.length > 0) {
     const retencaoPlanoIds = dados.retencoes.map((r) => r.planoId);
     const retencaoPlanosValidos = await db.planoFinanceiro.count({
-      where: { id: { in: retencaoPlanoIds }, grupoId, natureza: "analitica", ativo: true },
+      where: { id: { in: retencaoPlanoIds }, grupoId, natureza: "analitica", ativo: true, permiteRetencao: true },
     });
-    if (retencaoPlanosValidos !== retencaoPlanoIds.length) return { erro: "Uma ou mais contas de retenção são inválidas." };
+    if (retencaoPlanosValidos !== retencaoPlanoIds.length) {
+      return { erro: "Uma ou mais contas de retenção são inválidas." } as const;
+    }
   }
   if (dados.comissoes.length > 0) {
     const vendedorIds = dados.comissoes.map((c) => c.vendedorId);
     const vendedoresValidos = await db.vendedor.count({ where: { id: { in: vendedorIds }, grupoId, ativo: true } });
-    if (vendedoresValidos !== vendedorIds.length) return { erro: "Um ou mais vendedores de comissão são inválidos." };
+    if (vendedoresValidos !== vendedorIds.length) return { erro: "Um ou mais vendedores de comissão são inválidos." } as const;
   }
-
-  const ultimoFechamento = await obterUltimoFechamentoAtivo(db, empresaId);
-  const dataMovimento = ultimoFechamento?.data ?? new Date();
 
   const valorOriginal = new Prisma.Decimal(dados.valorOriginal);
   const rateioPlanoDistribuido = distribuirValor(
@@ -251,103 +255,142 @@ export async function criarLancamentoFinanceiro(
     dados.rateioProcesso.map((l) => ({ ...l, percentual: new Prisma.Decimal(l.percentual) }))
   );
 
+  return { valorOriginal, rateioPlanoDistribuido, rateioProcessoDistribuido } as const;
+}
+
+type ResultadoValidacao = Awaited<ReturnType<typeof validarRegrasDeNegocio>>;
+type ValidacaoOk = Extract<ResultadoValidacao, { valorOriginal: Prisma.Decimal }>;
+
+/** Monta o objeto de dados (sem `empresaId`) para `create`/`update` do Lançamento, incluindo as relações aninhadas. */
+function montarDadosPersistencia(dados: DadosLancamento, valores: ValidacaoOk) {
+  const { valorOriginal, rateioPlanoDistribuido, rateioProcessoDistribuido } = valores;
+  return {
+    tipo: dados.tipo,
+    natureza: dados.natureza,
+    historicoSimplificado: dados.historicoSimplificado,
+    historicoComplementar: dados.historicoComplementar || null,
+    documento: dados.documento || null,
+    documentoFisico: dados.documentoFisico === "on",
+    tipoDocumento: dados.tipoDocumento,
+    portadorId: dados.portadorId || null,
+    contaPrevistaId: dados.contaPrevistaId || null,
+    clienteId: dados.clienteId || null,
+    fornecedorId: dados.fornecedorId || null,
+    valorOriginal,
+    dataEmissao: dados.dataEmissao,
+    dataVencimento: dados.dataVencimento,
+    moraMes: dados.moraMes !== undefined ? new Prisma.Decimal(dados.moraMes) : null,
+    processoId: dados.processoId,
+    observacao: dados.observacao || null,
+    rateios: {
+      create: rateioPlanoDistribuido.map((l) => ({
+        planoId: l.planoId,
+        percentual: new Prisma.Decimal(l.percentual),
+        valor: l.valor,
+        rateiosCentroCusto:
+          l.centroCusto.length > 0
+            ? {
+                create: distribuirValor(
+                  l.valor,
+                  l.centroCusto.map((cc) => ({ ...cc, percentual: new Prisma.Decimal(cc.percentual) }))
+                ).map((cc) => ({
+                  centroCustoId: cc.centroCustoId,
+                  percentual: new Prisma.Decimal(cc.percentual),
+                  valor: cc.valor,
+                })),
+              }
+            : undefined,
+      })),
+    },
+    rateiosProcesso: {
+      create: rateioProcessoDistribuido.map((l) => ({
+        processoItemId: l.processoItemId,
+        percentual: new Prisma.Decimal(l.percentual),
+        valor: l.valor,
+      })),
+    },
+    retencoes:
+      dados.retencoes.length > 0
+        ? {
+            create: dados.retencoes.map((r) => ({
+              planoId: r.planoId,
+              percentual: new Prisma.Decimal(r.percentual),
+              valor: valorOriginal.times(r.percentual).dividedBy(100).toDecimalPlaces(2),
+            })),
+          }
+        : undefined,
+    comissoes:
+      dados.comissoes.length > 0
+        ? {
+            create: dados.comissoes.map((c) => ({
+              vendedorId: c.vendedorId,
+              percentual: new Prisma.Decimal(c.percentual),
+              valor: valorOriginal.times(c.percentual).dividedBy(100).toDecimalPlaces(2),
+            })),
+          }
+        : undefined,
+    dadosCheque: dados.tipoDocumento.startsWith("cheque_")
+      ? {
+          create: {
+            banco: dados.chequeBanco || null,
+            agencia: dados.chequeAgencia || null,
+            numeroCheque: dados.chequeNumeroCheque || null,
+            contaCorrente: dados.chequeContaCorrente || null,
+            cgc: dados.chequeCgc || null,
+            cpf: dados.chequeCpf || null,
+            telefone: dados.chequeTelefone || null,
+            terceiro: dados.chequeTerceiro || null,
+          },
+        }
+      : undefined,
+    dadosCartao:
+      dados.tipoDocumento === "cartao"
+        ? {
+            create: {
+              operadora: dados.cartaoOperadora || null,
+              numeroCartao: dados.cartaoNumeroCartao || null,
+              numeroAutorizacao: dados.cartaoNumeroAutorizacao || null,
+              tipoTaxa: dados.cartaoTipoTaxa || null,
+            },
+          }
+        : undefined,
+  };
+}
+
+/**
+ * Cadastra um Lançamento Financeiro (conta a pagar/receber) com o rateio
+ * triplo. Nunca move dinheiro nem grava no ledger — isso só acontece na
+ * Baixa (`darBaixaLancamento`), mesmo espírito do estoque (um Lançamento de
+ * compra só afeta o Kardex quando confirmado). Uma `prevista` fica travada
+ * pra Baixa até ser confirmada (`confirmarPrevisao`), que a converte em `real`.
+ */
+export async function criarLancamentoFinanceiro(
+  _prev: LancamentoFinanceiroFormState,
+  formData: FormData
+): Promise<LancamentoFinanceiroFormState> {
+  const permissao = await exigirPermissao();
+  if ("erro" in permissao) return permissao;
+  const empresaId = permissao.session.user.empresaId!;
+  const grupoId = permissao.session.user.grupoId!;
+
+  const parsed = lerFormData(formData);
+  if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  const dados = parsed.data;
+
+  const validado = await validarRegrasDeNegocio(dados, { empresaId, grupoId });
+  if ("erro" in validado) return validado;
+
+  const ultimoFechamento = await obterUltimoFechamentoAtivo(db, empresaId);
+  const dataMovimento = ultimoFechamento?.data ?? new Date();
+
   let lancamentoId: string;
   try {
     const lancamento = await db.lancamentoFinanceiro.create({
       data: {
         empresaId,
-        tipo: dados.tipo,
-        natureza: "real",
-        historicoSimplificado: dados.historicoSimplificado,
-        historicoComplementar: dados.historicoComplementar || null,
-        documento: dados.documento || null,
-        documentoFisico: dados.documentoFisico === "on",
-        tipoDocumento: dados.tipoDocumento,
-        portadorId: dados.portadorId || null,
-        contaPrevistaId: dados.contaPrevistaId || null,
-        clienteId: dados.clienteId || null,
-        fornecedorId: dados.fornecedorId || null,
-        valorOriginal,
-        dataEmissao: dados.dataEmissao,
-        dataVencimento: dados.dataVencimento,
         dataMovimento,
-        moraMes: dados.moraMes !== undefined ? new Prisma.Decimal(dados.moraMes) : null,
-        processoId: dados.processoId,
-        observacao: dados.observacao || null,
-        rateios: {
-          create: rateioPlanoDistribuido.map((l) => ({
-            planoId: l.planoId,
-            percentual: new Prisma.Decimal(l.percentual),
-            valor: l.valor,
-            rateiosCentroCusto:
-              l.centroCusto.length > 0
-                ? {
-                    create: distribuirValor(
-                      l.valor,
-                      l.centroCusto.map((cc) => ({ ...cc, percentual: new Prisma.Decimal(cc.percentual) }))
-                    ).map((cc) => ({
-                      centroCustoId: cc.centroCustoId,
-                      percentual: new Prisma.Decimal(cc.percentual),
-                      valor: cc.valor,
-                    })),
-                  }
-                : undefined,
-          })),
-        },
-        rateiosProcesso: {
-          create: rateioProcessoDistribuido.map((l) => ({
-            processoItemId: l.processoItemId,
-            percentual: new Prisma.Decimal(l.percentual),
-            valor: l.valor,
-          })),
-        },
-        retencoes:
-          dados.retencoes.length > 0
-            ? {
-                create: dados.retencoes.map((r) => ({
-                  planoId: r.planoId,
-                  percentual: new Prisma.Decimal(r.percentual),
-                  valor: valorOriginal.times(r.percentual).dividedBy(100).toDecimalPlaces(2),
-                })),
-              }
-            : undefined,
-        comissoes:
-          dados.comissoes.length > 0
-            ? {
-                create: dados.comissoes.map((c) => ({
-                  vendedorId: c.vendedorId,
-                  percentual: new Prisma.Decimal(c.percentual),
-                  valor: valorOriginal.times(c.percentual).dividedBy(100).toDecimalPlaces(2),
-                })),
-              }
-            : undefined,
-        dadosCheque: dados.tipoDocumento.startsWith("cheque_")
-          ? {
-              create: {
-                banco: dados.chequeBanco || null,
-                agencia: dados.chequeAgencia || null,
-                numeroCheque: dados.chequeNumeroCheque || null,
-                contaCorrente: dados.chequeContaCorrente || null,
-                cgc: dados.chequeCgc || null,
-                cpf: dados.chequeCpf || null,
-                telefone: dados.chequeTelefone || null,
-                terceiroClienteId: dados.chequeTerceiroClienteId || null,
-                terceiroFornecedorId: dados.chequeTerceiroFornecedorId || null,
-              },
-            }
-          : undefined,
-        dadosCartao:
-          dados.tipoDocumento === "cartao"
-            ? {
-                create: {
-                  operadora: dados.cartaoOperadora || null,
-                  numeroCartao: dados.cartaoNumeroCartao || null,
-                  loteRv: dados.cartaoLoteRv || null,
-                  numeroAutorizacao: dados.cartaoNumeroAutorizacao || null,
-                  tipoTaxa: dados.cartaoTipoTaxa || null,
-                },
-              }
-            : undefined,
+        criadoPorId: permissao.session.user.id,
+        ...montarDadosPersistencia(dados, validado),
       },
     });
     lancamentoId = lancamento.id;
@@ -359,8 +402,133 @@ export async function criarLancamentoFinanceiro(
   redirect(`/lancamentos-financeiros/${lancamentoId}`);
 }
 
+/** Atualiza um Lançamento Financeiro `aberto` — recria o rateio triplo do zero a partir do formulário. */
+export async function atualizarLancamentoFinanceiro(
+  lancamentoId: string,
+  _prev: LancamentoFinanceiroFormState,
+  formData: FormData
+): Promise<LancamentoFinanceiroFormState> {
+  const permissao = await exigirPermissao();
+  if ("erro" in permissao) return permissao;
+  const empresaId = permissao.session.user.empresaId!;
+  const grupoId = permissao.session.user.grupoId!;
+
+  const atual = await db.lancamentoFinanceiro.findFirst({ where: { id: lancamentoId, empresaId } });
+  if (!atual) return { erro: "Lançamento não encontrado." };
+  if (atual.status !== "aberto") return { erro: "Só é possível editar lançamentos em aberto." };
+
+  const parsed = lerFormData(formData);
+  if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  const dados = parsed.data;
+
+  if (dados.tipo !== atual.tipo) {
+    return { erro: "Não é possível trocar Despesa/Receita depois de criado." };
+  }
+
+  const validado = await validarRegrasDeNegocio(dados, { empresaId, grupoId });
+  if ("erro" in validado) return validado;
+
+  try {
+    await db.$transaction(async (tx) => {
+      const travado = await tx.lancamentoFinanceiro.findUniqueOrThrow({ where: { id: lancamentoId } });
+      if (travado.status !== "aberto") throw new Error("Só é possível editar lançamentos em aberto.");
+
+      await tx.lancamentoRateio.deleteMany({ where: { lancamentoId } });
+      await tx.lancamentoRateioProcesso.deleteMany({ where: { lancamentoId } });
+      await tx.retencao.deleteMany({ where: { lancamentoId } });
+      await tx.comissao.deleteMany({ where: { lancamentoId } });
+      await tx.dadosCheque.deleteMany({ where: { lancamentoId } });
+      await tx.dadosCartao.deleteMany({ where: { lancamentoId } });
+
+      await tx.lancamentoFinanceiro.update({
+        where: { id: lancamentoId },
+        data: {
+          ...montarDadosPersistencia(dados, validado),
+          atualizadoEm: new Date(),
+          atualizadoPorId: permissao.session.user.id,
+        },
+      });
+    });
+  } catch (e) {
+    return { erro: e instanceof Error ? e.message : "Não foi possível salvar as alterações." };
+  }
+
+  revalidatePath("/lancamentos-financeiros");
+  revalidatePath(`/lancamentos-financeiros/${lancamentoId}`);
+  redirect(`/lancamentos-financeiros/${lancamentoId}`);
+}
+
+/** Converte uma `prevista` em `real`, liberando-a para Baixa — snapshot de `dataMovimento` refeito na hora da confirmação. */
+export async function confirmarPrevisao(
+  lancamentoId: string,
+  _prev: LancamentoFinanceiroFormState,
+  _formData: FormData
+): Promise<LancamentoFinanceiroFormState> {
+  const permissao = await exigirPermissao();
+  if ("erro" in permissao) return permissao;
+  const empresaId = permissao.session.user.empresaId!;
+
+  const lancamento = await db.lancamentoFinanceiro.findFirst({ where: { id: lancamentoId, empresaId } });
+  if (!lancamento) return { erro: "Lançamento não encontrado." };
+  if (lancamento.status !== "aberto") return { erro: "Só é possível confirmar previsões em aberto." };
+  if (lancamento.natureza !== "prevista") return { erro: "Este lançamento já é real." };
+
+  const ultimoFechamento = await obterUltimoFechamentoAtivo(db, empresaId);
+  const dataMovimento = ultimoFechamento?.data ?? new Date();
+
+  await db.lancamentoFinanceiro.update({
+    where: { id: lancamentoId },
+    data: { natureza: "real", convertidoEm: new Date(), dataMovimento },
+  });
+
+  revalidatePath("/lancamentos-financeiros");
+  revalidatePath(`/lancamentos-financeiros/${lancamentoId}`);
+  return {};
+}
+
+/**
+ * Exclui um Lançamento Financeiro — só permitido pra uma `prevista` em aberto
+ * (nunca teve Baixa, então não há ledger nem saldo de conta a desfazer). Um
+ * lançamento `real` nunca é excluído, só cancelado/estornado.
+ */
+export async function excluirLancamentoFinanceiro(
+  lancamentoId: string,
+  _prev: LancamentoFinanceiroFormState,
+  _formData: FormData
+): Promise<LancamentoFinanceiroFormState> {
+  const permissao = await exigirPermissao();
+  if ("erro" in permissao) return permissao;
+  const empresaId = permissao.session.user.empresaId!;
+
+  const lancamento = await db.lancamentoFinanceiro.findFirst({ where: { id: lancamentoId, empresaId } });
+  if (!lancamento) return { erro: "Lançamento não encontrado." };
+  if (lancamento.natureza !== "prevista") return { erro: "Só é possível excluir lançamentos classificados como Previsão." };
+  if (lancamento.status !== "aberto") return { erro: "Só é possível excluir lançamentos em aberto." };
+
+  try {
+    await db.$transaction(async (tx) => {
+      const travado = await tx.lancamentoFinanceiro.findUniqueOrThrow({ where: { id: lancamentoId } });
+      if (travado.natureza !== "prevista" || travado.status !== "aberto") {
+        throw new Error("Só é possível excluir lançamentos classificados como Previsão, em aberto.");
+      }
+
+      await tx.retencao.deleteMany({ where: { lancamentoId } });
+      await tx.comissao.deleteMany({ where: { lancamentoId } });
+      await tx.dadosCheque.deleteMany({ where: { lancamentoId } });
+      await tx.dadosCartao.deleteMany({ where: { lancamentoId } });
+      await tx.lancamentoFinanceiro.delete({ where: { id: lancamentoId } });
+    });
+  } catch (e) {
+    return { erro: e instanceof Error ? e.message : "Não foi possível excluir o lançamento." };
+  }
+
+  revalidatePath("/lancamentos-financeiros");
+  redirect("/lancamentos-financeiros");
+}
+
 const baixaSchema = z.object({
   contaId: z.string().min(1, "Selecione a conta."),
+  terceiroId: z.string().trim().optional(),
   dataBaixa: z.coerce.date({ message: "Informe a data da baixa." }),
   juros: z.coerce.number().nonnegative("Juros não pode ser negativo.").optional(),
   multa: z.coerce.number().nonnegative("Multa não pode ser negativa.").optional(),
@@ -380,9 +548,11 @@ export async function darBaixaLancamento(
 
   const lancamento = await db.lancamentoFinanceiro.findFirst({ where: { id: lancamentoId, empresaId } });
   if (!lancamento) return { erro: "Lançamento não encontrado." };
+  if (lancamento.natureza === "prevista") return { erro: "Confirme a previsão antes de dar baixa." };
 
   const parsed = baixaSchema.safeParse({
     contaId: formData.get("contaId"),
+    terceiroId: formData.get("terceiroId"),
     dataBaixa: formData.get("dataBaixa"),
     juros: formData.get("juros") || undefined,
     multa: formData.get("multa") || undefined,
@@ -394,6 +564,23 @@ export async function darBaixaLancamento(
   const conta = await db.contaFinanceira.findFirst({ where: { id: parsed.data.contaId, empresaId } });
   if (!conta) return { erro: "Conta financeira não encontrada." };
 
+  const erroConta = erroContaParaBaixa(conta, { tipoLancamento: lancamento.tipo, tipoDocumento: lancamento.tipoDocumento });
+  if (erroConta) return { erro: erroConta };
+
+  const exigeCliente = lancamento.tipo === "receita" && conta.adiantamentoCliente;
+  const exigeFornecedor = lancamento.tipo === "despesa" && conta.adiantamentoFornecedor;
+  if ((exigeCliente || exigeFornecedor) && !parsed.data.terceiroId) {
+    return { erro: exigeCliente ? "Selecione o cliente do adiantamento." : "Selecione o fornecedor do adiantamento." };
+  }
+  if (exigeCliente) {
+    const cliente = await db.cliente.findFirst({ where: { id: parsed.data.terceiroId, grupoId: permissao.session.user.grupoId! } });
+    if (!cliente) return { erro: "Cliente do adiantamento não encontrado." };
+  }
+  if (exigeFornecedor) {
+    const fornecedor = await db.fornecedor.findFirst({ where: { id: parsed.data.terceiroId, grupoId: permissao.session.user.grupoId! } });
+    if (!fornecedor) return { erro: "Fornecedor do adiantamento não encontrado." };
+  }
+
   try {
     await registrarBaixa({
       lancamentoId,
@@ -403,6 +590,9 @@ export async function darBaixaLancamento(
       multa: new Prisma.Decimal(parsed.data.multa ?? 0),
       desconto: new Prisma.Decimal(parsed.data.desconto ?? 0),
       historicoComplementar: parsed.data.historicoComplementar,
+      usuarioId: permissao.session.user.id,
+      adiantamentoClienteId: exigeCliente ? parsed.data.terceiroId : undefined,
+      adiantamentoFornecedorId: exigeFornecedor ? parsed.data.terceiroId : undefined,
     });
   } catch (e) {
     return { erro: e instanceof Error ? e.message : "Não foi possível dar baixa." };
@@ -444,6 +634,11 @@ export async function estornarBaixaLancamento(
   });
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
+  const ehCheque = lancamento.tipoDocumento.startsWith("cheque_");
+  if (!ehCheque && parsed.data.contaId !== baixaAtiva.contaId) {
+    return { erro: "Só é possível trocar a conta em estorno de cheque." };
+  }
+
   const conta = await db.contaFinanceira.findFirst({ where: { id: parsed.data.contaId, empresaId } });
   if (!conta) return { erro: "Conta financeira não encontrada." };
 
@@ -453,7 +648,7 @@ export async function estornarBaixaLancamento(
       contaId: parsed.data.contaId,
       motivo: parsed.data.motivo,
       dataEstorno: parsed.data.dataEstorno,
-      alineaDevolucaoId: parsed.data.alineaDevolucaoId,
+      alineaDevolucaoId: ehCheque ? parsed.data.alineaDevolucaoId : undefined,
     });
   } catch (e) {
     return { erro: e instanceof Error ? e.message : "Não foi possível estornar a baixa." };

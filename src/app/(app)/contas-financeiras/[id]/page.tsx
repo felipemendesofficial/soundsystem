@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -11,12 +12,19 @@ function formatarMoeda(valor: unknown) {
   return Number(valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function formatarCompetencia(data: Date) {
+  return data.toLocaleDateString("pt-BR", { timeZone: "UTC", month: "long", year: "numeric" });
+}
+
 export default async function EditarContaFinanceiraPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await auth();
   if (!session?.user || !podeGerenciarFinanceiro(session.user.perfil)) redirect("/");
 
-  const conta = await db.contaFinanceira.findFirst({ where: { id, empresaId: session.user.empresaId! } });
+  const [conta, saldosMensais] = await Promise.all([
+    db.contaFinanceira.findFirst({ where: { id, empresaId: session.user.empresaId! } }),
+    db.saldoMensalConta.findMany({ where: { contaId: id }, orderBy: { competencia: "desc" }, take: 12 }),
+  ]);
   if (!conta) notFound();
 
   return (
@@ -27,6 +35,10 @@ export default async function EditarContaFinanceiraPage({ params }: { params: Pr
           {conta.ativo ? "Ativa" : "Inativa"}
         </Badge>
       </div>
+
+      <Button size="sm" variant="outline" render={<Link href={`/contas-financeiras/${id}/conciliacao`} />}>
+        Conciliação Bancária
+      </Button>
 
       <ContaFinanceiraForm
         action={atualizarContaFinanceira.bind(null, id)}
@@ -46,6 +58,23 @@ export default async function EditarContaFinanceiraPage({ params }: { params: Pr
           adiantamentoFornecedor: conta.adiantamentoFornecedor,
         }}
       />
+
+      {saldosMensais.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-base font-semibold">Saldo Mensal</h2>
+          <ul className="space-y-2">
+            {saldosMensais.map((s) => (
+              <li key={s.id} className="flex items-center justify-between rounded-lg border border-border bg-card p-3 text-sm">
+                <span className="capitalize text-muted-foreground">{formatarCompetencia(s.competencia)}</span>
+                <span className="text-right">
+                  <span className="block text-xs text-muted-foreground">Inicial {formatarMoeda(s.saldoInicial)}</span>
+                  <span className="block font-medium">Final {formatarMoeda(s.saldoFinal)}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <form action={alternarAtivoContaFinanceira.bind(null, id, !conta.ativo)}>
         <Button

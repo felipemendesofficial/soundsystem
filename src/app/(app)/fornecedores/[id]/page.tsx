@@ -15,6 +15,7 @@ export default async function EditarFornecedorPage({ params }: { params: Promise
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Editar Fornecedor</h1>
+
       <FornecedorForm action={action} defaultValues={fornecedor} />
     </div>
   );

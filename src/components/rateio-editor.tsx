@@ -42,6 +42,7 @@ export function RateioEditor({
   exigirSoma100 = true,
   placeholderBusca = "Buscar...",
   vazio = "Nenhuma conta cadastrada.",
+  percentualPadrao = "",
 }: {
   titulo: string;
   itens: ItemRateio[];
@@ -50,9 +51,11 @@ export function RateioEditor({
   exigirSoma100?: boolean;
   placeholderBusca?: string;
   vazio?: string;
+  /** Percentual pré-preenchido em cada linha nova — útil quando só se espera uma linha (soma 100% de cara). */
+  percentualPadrao?: string;
 }) {
   function adicionar() {
-    onChange([...linhas, linhaRateioVazia()]);
+    onChange([...linhas, { ...linhaRateioVazia(), percentual: percentualPadrao }]);
   }
 
   function remover(key: string) {

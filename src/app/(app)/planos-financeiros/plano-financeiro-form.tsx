@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -20,6 +21,7 @@ export function PlanoFinanceiroForm({
   cancelarHref,
   prefixo,
   qtdDigitos,
+  analiticaNaCriacao = false,
   defaultValues,
 }: {
   action: Action;
@@ -28,10 +30,13 @@ export function PlanoFinanceiroForm({
   prefixo?: string | null;
   /** Quantos dígitos o nível atual aceita. Só usado ao criar. */
   qtdDigitos?: number;
-  defaultValues?: { codigo: string; descricao: string; tipo: string; natureza: string };
+  /** Se a conta sendo criada agora vai nascer Analítica (último nível da máscara) — só então faz sentido oferecer o indicador de Retenção. */
+  analiticaNaCriacao?: boolean;
+  defaultValues?: { codigo: string; descricao: string; tipo: string; natureza: string; permiteRetencao: boolean };
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   const editando = defaultValues !== undefined;
+  const mostrarPermiteRetencao = editando ? defaultValues.natureza === "analitica" : analiticaNaCriacao;
 
   return (
     <form action={formAction} className="max-w-md space-y-6">
@@ -76,6 +81,13 @@ export function PlanoFinanceiroForm({
           </SelectContent>
         </Select>
       </div>
+
+      {mostrarPermiteRetencao && (
+        <div className="flex items-center gap-3">
+          <Checkbox id="permiteRetencao" name="permiteRetencao" defaultChecked={defaultValues?.permiteRetencao ?? false} />
+          <Label htmlFor="permiteRetencao" className={labelClass}>Pode ser indicada como Retenção nos Lançamentos</Label>
+        </div>
+      )}
 
       {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}
       <div className="flex gap-3">

@@ -10,6 +10,7 @@ export type ItemFornecedor = {
   tipo: string;
   documento: string;
   telefone: string;
+  saldoAdiantamento: string | null;
   buscaTexto: string;
 };
 
@@ -35,11 +36,8 @@ export function FornecedoresLista({ itens }: { itens: ItemFornecedor[] }) {
       ) : (
         <ul className="space-y-2">
           {filtrados.map((item) => (
-            <li key={item.id}>
-              <Link
-                href={`/fornecedores/${item.id}`}
-                className="relative block rounded-lg border border-border bg-card p-3 active:bg-accent"
-              >
+            <li key={item.id} className="rounded-lg border border-border bg-card">
+              <Link href={`/fornecedores/${item.id}`} className="relative block p-3 active:bg-accent">
                 <span className="absolute top-3.5 right-3 size-2.5 rounded-full bg-accent" />
                 <h2 className="mb-2 text-[15px] font-semibold">{item.nome}</h2>
 
@@ -58,6 +56,15 @@ export function FornecedoresLista({ itens }: { itens: ItemFornecedor[] }) {
                   </div>
                 </div>
               </Link>
+              {item.saldoAdiantamento !== null && (
+                <Link
+                  href={`/fornecedores/${item.id}/adiantamento`}
+                  className="flex items-center justify-between border-t border-border px-3 py-2 text-sm active:bg-accent"
+                >
+                  <span className="text-muted-foreground">Saldo de adiantamento</span>
+                  <span className="font-medium text-primary">{item.saldoAdiantamento}</span>
+                </Link>
+              )}
             </li>
           ))}
         </ul>

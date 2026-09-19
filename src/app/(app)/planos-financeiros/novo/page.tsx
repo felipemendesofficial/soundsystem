@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { podeGerenciarFinanceiro } from "@/lib/permissions";
-import { segmentoDoNivel } from "@/lib/mascara";
+import { segmentoDoNivel, naturezaParaNivel } from "@/lib/mascara";
 import { criarPlanoFinanceiro } from "../actions";
 import { PlanoFinanceiroForm } from "../plano-financeiro-form";
 
@@ -42,6 +42,7 @@ export default async function NovoPlanoFinanceiroPage({
         cancelarHref={`/planos-financeiros?mascaraId=${mascaraId}`}
         prefixo={pai?.codigo ?? null}
         qtdDigitos={segmentoMascara.qtdDigitos}
+        analiticaNaCriacao={naturezaParaNivel(nivel, mascara.segmentos.length) === "analitica"}
       />
     </div>
   );

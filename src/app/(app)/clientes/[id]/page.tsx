@@ -19,6 +19,7 @@ export default async function EditarClientePage({ params }: { params: Promise<{ 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Editar Cliente</h1>
+
       <ClienteForm
         action={action}
         tabelasPreco={tabelasPreco.map((t) => ({ id: t.id, nome: t.nome }))}

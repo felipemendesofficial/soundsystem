@@ -1,17 +1,21 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Landmark, Users, Wallet, Layers, GitBranch, Receipt, CalendarCheck } from "lucide-react";
+import { Landmark, Users, Wallet, Layers, GitBranch, Receipt, CalendarCheck, ArrowLeftRight, ReceiptText, TrendingUp, Sliders } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { podeGerenciarFinanceiro } from "@/lib/permissions";
 
 const SECOES = [
   { href: "/lancamentos-financeiros", label: "Lançamentos", descricao: "Contas a pagar e a receber", icon: Receipt },
   { href: "/contas-financeiras", label: "Contas Financeiras", descricao: "Bancos, caixas e fundos fixos", icon: Landmark },
+  { href: "/transferencias-entre-contas", label: "Transferências", descricao: "Movimenta dinheiro entre contas", icon: ArrowLeftRight },
+  { href: "/aplicacoes-financeiras", label: "Aplicações Financeiras", descricao: "Aplicação, resgate e rendimento", icon: TrendingUp },
+  { href: "/recolhimentos-retencao", label: "Recolhimento de Retenção", descricao: "Agrupa e paga tributos retidos", icon: ReceiptText },
   { href: "/portadores", label: "Portadores", descricao: "Quem carrega boletos/cheques físicos", icon: Users },
   { href: "/planos-financeiros", label: "Plano Financeiro", descricao: "Plano de contas de receitas e despesas", icon: Wallet },
   { href: "/centros-custo", label: "Centro de Custo", descricao: "Rateio por área/departamento", icon: Layers },
   { href: "/processos", label: "Processos", descricao: "Rateio por processo/projeto", icon: GitBranch },
   { href: "/fechamento-diario", label: "Fechamento Diário", descricao: "Fecha e reabre dias de movimento", icon: CalendarCheck },
+  { href: "/parametros-financeiros", label: "Parâmetros Financeiros", descricao: "Planos de aplicação e multa padrão", icon: Sliders },
 ];
 
 export default async function FinanceiroPage() {

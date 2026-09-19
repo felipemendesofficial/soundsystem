@@ -22,7 +22,7 @@ export async function fecharDiaAction(_prev: FechamentoFormState): Promise<Fecha
   if ("erro" in permissao) return permissao;
 
   try {
-    await fecharDia(db, permissao.session.user.empresaId!, permissao.session.user.id);
+    await db.$transaction((tx) => fecharDia(tx, permissao.session.user.empresaId!, permissao.session.user.id));
   } catch (e) {
     return { erro: e instanceof Error ? e.message : "Não foi possível fechar o dia." };
   }
