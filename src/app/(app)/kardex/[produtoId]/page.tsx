@@ -102,7 +102,7 @@ export default async function KardexPage({
         ...(filtroPeriodo ? { dataMovimento: filtroPeriodo } : {}),
       },
       orderBy: { dataMovimento: "asc" },
-      include: { deposito: true, cliente: true, fornecedor: true },
+      include: { deposito: true, cliente: true, fornecedor: true, orcamento: true },
     }),
   ]);
 
@@ -114,8 +114,18 @@ export default async function KardexPage({
       .join(" · ");
 
     let descritivo: string | undefined;
-    if (m.tipoMovimento === "compra") descritivo = m.fornecedor?.nome;
-    else if (m.tipoMovimento === "venda" || m.tipoMovimento === "os_saida") descritivo = m.cliente?.nome;
+    if (m.tipoMovimento === "compra") {
+      // Compra vinda de Orçamento: mostra o fornecedor (se houver) e também o
+      // descritivo do próprio Orçamento — o fornecedor sozinho costuma ser
+      // pouco específico aqui (várias compras genéricas caem no mesmo cadastro).
+      // Compra vinda de Lançamento avulso: só o fornecedor mesmo.
+      const partes = [m.fornecedor?.nome, m.orcamentoId ? m.orcamento?.descricao : undefined].filter(
+        (parte): parte is string => !!parte
+      );
+      descritivo = partes.length > 0 ? partes.join(" · ") : undefined;
+    } else if (m.tipoMovimento === "venda" || m.tipoMovimento === "os_saida") {
+      descritivo = m.cliente?.nome;
+    }
 
     return {
       id: m.id,
