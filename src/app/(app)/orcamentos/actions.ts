@@ -10,7 +10,7 @@ import {
   estornarEntradaNaTransacao,
   mensagemSaldoInsuficiente,
   registrarEntradaNaTransacao,
-  resolverTenantPorDeposito,
+  resolverTenantPorDepositoValidado,
   SaldoInsuficienteError,
 } from "@/lib/kardex";
 import { calcularRateio } from "@/lib/orcamento";
@@ -99,7 +99,9 @@ export async function criarOrcamento(_prev: OrcamentoFormState, formData: FormDa
   const modo = lerModoCalculo(formData);
   if (modo.erro) return { erro: modo.erro };
 
-  const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
+  const tenant = await resolverTenantPorDepositoValidado(db, parsed.data.depositoId, permissao.session.user.empresaId!);
+  if (!tenant) return { erro: "Depósito não encontrado." };
+  const { empresaId, grupoId } = tenant;
   const orcamento = await db.orcamento.create({
     data: {
       descricao: parsed.data.descricao || null,
@@ -142,7 +144,9 @@ export async function atualizarOrcamento(
   const modo = lerModoCalculo(formData);
   if (modo.erro) return { erro: modo.erro };
 
-  const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
+  const tenant = await resolverTenantPorDepositoValidado(db, parsed.data.depositoId, permissao.session.user.empresaId!);
+  if (!tenant) return { erro: "Depósito não encontrado." };
+  const { empresaId, grupoId } = tenant;
   await db.$transaction(async (tx) => {
     await tx.itemOrcamento.deleteMany({ where: { orcamentoId: id } });
     await tx.orcamento.update({

@@ -10,7 +10,7 @@ import {
   estornarLinhaDeMovimentoNaTransacao,
   mensagemSaldoInsuficiente,
   registrarSaidaNaTransacao,
-  resolverTenantPorDeposito,
+  resolverTenantPorDepositoValidado,
   SaldoInsuficienteError,
 } from "@/lib/kardex";
 import { normalizarTexto } from "@/lib/texto";
@@ -103,7 +103,9 @@ export async function criarOrdemServico(
   const parsed = toData(formData);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
-  const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
+  const tenant = await resolverTenantPorDepositoValidado(db, parsed.data.depositoId, permissao.session.user.empresaId!);
+  if (!tenant) return { erro: "Depósito não encontrado." };
+  const { empresaId, grupoId } = tenant;
   const itensComPrecoLiquido = calcularItensComPrecoLiquido(parsed.data);
   const os = await db.ordemServico.create({
     data: {
@@ -161,7 +163,9 @@ export async function atualizarOrdemServico(
   const parsed = toData(formData);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
-  const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
+  const tenant = await resolverTenantPorDepositoValidado(db, parsed.data.depositoId, permissao.session.user.empresaId!);
+  if (!tenant) return { erro: "Depósito não encontrado." };
+  const { empresaId, grupoId } = tenant;
   const itensComPrecoLiquido = calcularItensComPrecoLiquido(parsed.data);
   await db.$transaction(async (tx) => {
     await tx.itemOrdemServicoProduto.deleteMany({ where: { ordemServicoId: id } });

@@ -11,7 +11,7 @@ import {
   registrarEntradaNaTransacao,
   registrarSaidaNaTransacao,
   registrarTransferenciaNaTransacao,
-  resolverTenantPorDeposito,
+  resolverTenantPorDepositoValidado,
   SaldoInsuficienteError,
 } from "@/lib/kardex";
 import { podeLancarMovimentacao } from "@/lib/permissions";
@@ -149,7 +149,13 @@ export async function criarLancamento(_prev: LancamentoFormState, formData: Form
     });
     if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
-    const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoOrigemId);
+    const tenant = await resolverTenantPorDepositoValidado(db, parsed.data.depositoOrigemId, session.user.empresaId!);
+    if (!tenant) return { erro: "Depósito de origem não encontrado." };
+    const destino = await db.deposito.findFirst({
+      where: { id: parsed.data.depositoDestinoId, empresaId: session.user.empresaId! },
+    });
+    if (!destino) return { erro: "Depósito de destino não encontrado." };
+    const { empresaId, grupoId } = tenant;
     const lancamento = await db.lancamento.create({
       data: {
         tipo,
@@ -172,7 +178,9 @@ export async function criarLancamento(_prev: LancamentoFormState, formData: Form
     });
     if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
-    const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
+    const tenant = await resolverTenantPorDepositoValidado(db, parsed.data.depositoId, session.user.empresaId!);
+    if (!tenant) return { erro: "Depósito não encontrado." };
+    const { empresaId, grupoId } = tenant;
     const lancamento = await db.lancamento.create({
       data: {
         tipo,
@@ -200,7 +208,9 @@ export async function criarLancamento(_prev: LancamentoFormState, formData: Form
     if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
     if (tipo === "venda" && !parsed.data.vendedorId) return { erro: "Selecione o vendedor." };
 
-    const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
+    const tenant = await resolverTenantPorDepositoValidado(db, parsed.data.depositoId, session.user.empresaId!);
+    if (!tenant) return { erro: "Depósito não encontrado." };
+    const { empresaId, grupoId } = tenant;
     const lancamento = await db.lancamento.create({
       data: {
         tipo,
@@ -258,7 +268,13 @@ export async function atualizarLancamento(
       itens: formData.get("itens"),
     });
     if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
-    const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoOrigemId);
+    const tenant = await resolverTenantPorDepositoValidado(db, parsed.data.depositoOrigemId, session.user.empresaId!);
+    if (!tenant) return { erro: "Depósito de origem não encontrado." };
+    const destino = await db.deposito.findFirst({
+      where: { id: parsed.data.depositoDestinoId, empresaId: session.user.empresaId! },
+    });
+    if (!destino) return { erro: "Depósito de destino não encontrado." };
+    const { empresaId, grupoId } = tenant;
     dadosHeader = {
       depositoOrigemId: parsed.data.depositoOrigemId,
       depositoDestinoId: parsed.data.depositoDestinoId,
@@ -275,7 +291,9 @@ export async function atualizarLancamento(
       itens: formData.get("itens"),
     });
     if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
-    const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
+    const tenant = await resolverTenantPorDepositoValidado(db, parsed.data.depositoId, session.user.empresaId!);
+    if (!tenant) return { erro: "Depósito não encontrado." };
+    const { empresaId, grupoId } = tenant;
     dadosHeader = {
       depositoId: parsed.data.depositoId,
       empresaId,
@@ -297,7 +315,9 @@ export async function atualizarLancamento(
     });
     if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
     if (tipo === "venda" && !parsed.data.vendedorId) return { erro: "Selecione o vendedor." };
-    const { empresaId, grupoId } = await resolverTenantPorDeposito(db, parsed.data.depositoId);
+    const tenant = await resolverTenantPorDepositoValidado(db, parsed.data.depositoId, session.user.empresaId!);
+    if (!tenant) return { erro: "Depósito não encontrado." };
+    const { empresaId, grupoId } = tenant;
     dadosHeader = {
       depositoId: parsed.data.depositoId,
       empresaId,

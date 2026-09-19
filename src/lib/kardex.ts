@@ -97,6 +97,31 @@ export async function resolverTenantPorDeposito(
   return { empresaId: deposito.empresaId, grupoId: deposito.empresa.grupoId };
 }
 
+/**
+ * Mesmo que `resolverTenantPorDeposito`, mas usar sempre que `depositoId`
+ * vier direto de um Server Action (formulário) em vez de já ter sido
+ * derivado de um registro que o chamador validou contra a empresa da sessão
+ * (ex.: `atual.depositoId` de um Lançamento/Orçamento/OS já buscado com
+ * `empresaId` no `where`). Sem essa checagem, um depositoId de outra
+ * empresa (adivinhado, copiado, ou só uma requisição manual) resolveria pro
+ * tenant de outra empresa — a própria criação do registro (Lançamento,
+ * Orçamento, OS) usaria esse empresaId/grupoId errado. Devolve `null`
+ * (nunca lança) quando o depósito não existe ou não é dessa empresa, pra
+ * quem chama devolver um erro amigável em vez de estourar.
+ */
+export async function resolverTenantPorDepositoValidado(
+  tx: Prisma.TransactionClient | typeof db,
+  depositoId: string,
+  empresaIdEsperada: string
+): Promise<{ empresaId: string; grupoId: string } | null> {
+  const deposito = await tx.deposito.findFirst({
+    where: { id: depositoId, empresaId: empresaIdEsperada },
+    select: { empresaId: true, empresa: { select: { grupoId: true } } },
+  });
+  if (!deposito) return null;
+  return { empresaId: deposito.empresaId, grupoId: deposito.empresa.grupoId };
+}
+
 function paraDecimal(valor: number | string | Prisma.Decimal): Prisma.Decimal {
   return valor instanceof Prisma.Decimal ? valor : new Prisma.Decimal(valor);
 }
