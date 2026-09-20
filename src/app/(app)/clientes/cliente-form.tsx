@@ -25,6 +25,7 @@ export function ClienteForm({
   defaultValues?: {
     nome: string;
     tipoCliente: string;
+    documento: string | null;
     telefone: string | null;
     email: string | null;
     tabelaPrecoPadraoId: string | null;
@@ -54,6 +55,14 @@ export function ClienteForm({
             <SelectItem value="atacadista">Atacadista</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="documento" className={labelClass}>CPF/CNPJ (opcional)</Label>
+        <Input id="documento" name="documento" defaultValue={defaultValues?.documento ?? ""} className={inputClass} />
+        <p className="text-xs text-muted-foreground">
+          Com CNPJ, dá pra juntar títulos de clientes de filiais diferentes (mesmo radical) numa Renegociação.
+        </p>
       </div>
 
       <div className="space-y-2">

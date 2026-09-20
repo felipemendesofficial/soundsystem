@@ -22,6 +22,13 @@ export default async function ClientesPage() {
   });
   const mapaSaldos = new Map(saldosPorCliente.map((s) => [s.clienteId, s._sum.saldoAtual!]));
 
+  const creditosPorCliente = await db.creditoDevolucao.groupBy({
+    by: ["clienteId"],
+    where: { clienteId: { in: clientes.map((c) => c.id) }, saldoDisponivel: { gt: 0 } },
+    _sum: { saldoDisponivel: true },
+  });
+  const mapaCreditos = new Map(creditosPorCliente.map((c) => [c.clienteId, c._sum.saldoDisponivel!]));
+
   const itensLista: ItemCliente[] = clientes.map((c) => ({
     id: c.id,
     nome: c.nome,
@@ -29,6 +36,7 @@ export default async function ClientesPage() {
     telefone: c.telefone ?? "-",
     email: c.email ?? "-",
     saldoAdiantamento: mapaSaldos.has(c.id) ? formatarMoeda(mapaSaldos.get(c.id)) : null,
+    creditoDevolucao: mapaCreditos.has(c.id) ? formatarMoeda(mapaCreditos.get(c.id)) : null,
     buscaTexto: [c.nome, c.telefone, c.email].filter(Boolean).join(" ").toLowerCase(),
   }));
 

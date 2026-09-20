@@ -22,6 +22,13 @@ export default async function FornecedoresPage() {
   });
   const mapaSaldos = new Map(saldosPorFornecedor.map((s) => [s.fornecedorId, s._sum.saldoAtual!]));
 
+  const creditosPorFornecedor = await db.creditoDevolucao.groupBy({
+    by: ["fornecedorId"],
+    where: { fornecedorId: { in: fornecedores.map((f) => f.id) }, saldoDisponivel: { gt: 0 } },
+    _sum: { saldoDisponivel: true },
+  });
+  const mapaCreditos = new Map(creditosPorFornecedor.map((c) => [c.fornecedorId, c._sum.saldoDisponivel!]));
+
   const itensLista: ItemFornecedor[] = fornecedores.map((f) => ({
     id: f.id,
     nome: f.nome,
@@ -29,6 +36,7 @@ export default async function FornecedoresPage() {
     documento: f.documento ?? "-",
     telefone: f.telefone ?? "-",
     saldoAdiantamento: mapaSaldos.has(f.id) ? formatarMoeda(mapaSaldos.get(f.id)) : null,
+    creditoDevolucao: mapaCreditos.has(f.id) ? formatarMoeda(mapaCreditos.get(f.id)) : null,
     buscaTexto: [f.nome, f.documento, f.telefone, f.email].filter(Boolean).join(" ").toLowerCase(),
   }));
 

@@ -63,11 +63,14 @@ const ordemProducaoSchema = z.object({
   servicos: parseJsonArray(servicoSchema, { label: "Serviços" }),
 });
 
-export async function criarOrdemProducao(_prev: OrdemProducaoFormState, formData: FormData): Promise<OrdemProducaoFormState> {
-  const permissao = await exigirPermissao();
-  if ("erro" in permissao) return permissao;
-  const empresaId = permissao.session.user.empresaId!;
-  const grupoId = permissao.session.user.grupoId!;
+type DadosOrdemProducao = z.infer<typeof ordemProducaoSchema>;
+
+/** Parse + validação compartilhados entre criar/atualizar — tudo que não depende de a Ordem já existir. */
+async function lerEValidar(
+  formData: FormData,
+  ctx: { empresaId: string; grupoId: string }
+): Promise<{ dados: DadosOrdemProducao } | { erro: string }> {
+  const { empresaId, grupoId } = ctx;
 
   const parsed = ordemProducaoSchema.safeParse({
     depositoEntradaId: formData.get("depositoEntradaId"),
@@ -106,6 +109,19 @@ export async function criarOrdemProducao(_prev: OrdemProducaoFormState, formData
     if (servicosValidos !== new Set(servicoIds).size) return { erro: "Um ou mais serviços são inválidos." };
   }
 
+  return { dados };
+}
+
+export async function criarOrdemProducao(_prev: OrdemProducaoFormState, formData: FormData): Promise<OrdemProducaoFormState> {
+  const permissao = await exigirPermissao();
+  if ("erro" in permissao) return permissao;
+  const empresaId = permissao.session.user.empresaId!;
+  const grupoId = permissao.session.user.grupoId!;
+
+  const validado = await lerEValidar(formData, { empresaId, grupoId });
+  if ("erro" in validado) return validado;
+  const { dados } = validado;
+
   const ordem = await db.ordemProducao.create({
     data: {
       empresaId,
@@ -130,18 +146,67 @@ export async function criarOrdemProducao(_prev: OrdemProducaoFormState, formData
   redirect(`/ordens-producao/${ordem.id}`);
 }
 
-export async function excluirOrdemProducao(id: string): Promise<OrdemProducaoFormState> {
+/** Só permitida enquanto `aberta` — nenhum estoque foi movimentado ainda, então materiais/serviços podem ser recriados do zero. */
+export async function atualizarOrdemProducao(
+  id: string,
+  _prev: OrdemProducaoFormState,
+  formData: FormData
+): Promise<OrdemProducaoFormState> {
+  const permissao = await exigirPermissao();
+  if ("erro" in permissao) return permissao;
+  const empresaId = permissao.session.user.empresaId!;
+  const grupoId = permissao.session.user.grupoId!;
+
+  const atual = await db.ordemProducao.findFirst({ where: { id, empresaId } });
+  if (!atual) return { erro: "Ordem de Produção não encontrada." };
+  if (atual.status !== "aberta") return { erro: "Só é possível editar uma Ordem de Produção em aberto." };
+
+  const validado = await lerEValidar(formData, { empresaId, grupoId });
+  if ("erro" in validado) return validado;
+  const { dados } = validado;
+
+  await db.$transaction(async (tx) => {
+    await tx.ordemProducaoMaterial.deleteMany({ where: { ordemProducaoId: id } });
+    await tx.ordemProducaoServico.deleteMany({ where: { ordemProducaoId: id } });
+    await tx.ordemProducao.update({
+      where: { id },
+      data: {
+        depositoEntradaId: dados.depositoEntradaId,
+        produtoFinalId: dados.produtoFinalId,
+        quantidadeEntrada: new Prisma.Decimal(dados.quantidadeEntrada),
+        materiais: {
+          create: dados.materiais.map((m) => ({
+            produtoId: m.produtoId,
+            depositoId: m.depositoId,
+            quantidade: new Prisma.Decimal(m.quantidade),
+          })),
+        },
+        servicos: {
+          create: dados.servicos.map((s) => ({ servicoId: s.servicoId, valor: new Prisma.Decimal(s.valor) })),
+        },
+      },
+    });
+  });
+
+  revalidatePath("/ordens-producao");
+  revalidatePath(`/ordens-producao/${id}`);
+  redirect(`/ordens-producao/${id}`);
+}
+
+/** Nunca apaga de verdade — só marca `cancelada`, pra continuar consultável no histórico. Só permitida em aberto (nenhum estoque foi movimentado ainda). */
+export async function cancelarOrdemProducao(id: string): Promise<OrdemProducaoFormState> {
   const permissao = await exigirPermissao();
   if ("erro" in permissao) return permissao;
   const empresaId = permissao.session.user.empresaId!;
 
   const ordem = await db.ordemProducao.findFirst({ where: { id, empresaId } });
   if (!ordem) return { erro: "Ordem de Produção não encontrada." };
-  if (ordem.status !== "aberta") return { erro: "Só é possível excluir uma Ordem de Produção em aberto." };
+  if (ordem.status !== "aberta") return { erro: "Só é possível cancelar uma Ordem de Produção em aberto." };
 
-  await db.ordemProducao.delete({ where: { id } });
+  await db.ordemProducao.update({ where: { id }, data: { status: "cancelada" } });
   revalidatePath("/ordens-producao");
-  redirect("/ordens-producao");
+  revalidatePath(`/ordens-producao/${id}`);
+  return {};
 }
 
 /**

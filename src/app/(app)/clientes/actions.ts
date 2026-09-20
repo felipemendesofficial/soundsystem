@@ -10,6 +10,7 @@ import { normalizarTexto } from "@/lib/texto";
 const schema = z.object({
   nome: z.string().trim().min(1, "Informe o nome.").transform(normalizarTexto),
   tipoCliente: z.enum(["varejista", "atacadista"]),
+  documento: z.string().trim().optional(),
   telefone: z.string().trim().transform(normalizarTexto).optional(),
   email: z.union([z.literal(""), z.string().trim().email("Email inválido.")]).optional(),
   tabelaPrecoPadraoId: z.string().trim().optional(),
@@ -27,6 +28,7 @@ function toData(formData: FormData) {
   return schema.safeParse({
     nome: formData.get("nome"),
     tipoCliente: formData.get("tipoCliente"),
+    documento: formData.get("documento"),
     telefone: formData.get("telefone"),
     email: formData.get("email"),
     tabelaPrecoPadraoId: formData.get("tabelaPrecoPadraoId"),
@@ -42,6 +44,7 @@ export async function criarCliente(_prev: ClienteFormState, formData: FormData):
     data: {
       nome: parsed.data.nome,
       tipoCliente: parsed.data.tipoCliente,
+      documento: parsed.data.documento || null,
       telefone: parsed.data.telefone || null,
       email: parsed.data.email || null,
       tabelaPrecoPadraoId: parsed.data.tabelaPrecoPadraoId || null,
@@ -67,6 +70,7 @@ export async function atualizarCliente(
     data: {
       nome: parsed.data.nome,
       tipoCliente: parsed.data.tipoCliente,
+      documento: parsed.data.documento || null,
       telefone: parsed.data.telefone || null,
       email: parsed.data.email || null,
       tabelaPrecoPadraoId: parsed.data.tabelaPrecoPadraoId || null,

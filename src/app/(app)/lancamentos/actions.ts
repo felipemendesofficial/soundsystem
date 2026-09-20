@@ -17,7 +17,7 @@ import {
 import { podeLancarMovimentacao } from "@/lib/permissions";
 import { normalizarTexto } from "@/lib/texto";
 import { calcularAjusteTotal } from "@/lib/ajuste-total";
-import type { TipoLancamento } from "@/generated/prisma/client";
+import { Prisma, type TipoLancamento } from "@/generated/prisma/client";
 
 export type LancamentoFormState = { erro?: string };
 
@@ -51,6 +51,7 @@ function parseItens<T extends z.ZodRawShape>(itemSchema: z.ZodObject<T>) {
 const transferenciaSchema = z.object({
   depositoOrigemId: z.string().min(1, "Selecione o depósito de origem."),
   depositoDestinoId: z.string().min(1, "Selecione o depósito de destino."),
+  documento: z.string().trim().optional(),
   observacao: z.string().trim().transform(normalizarTexto).optional(),
   itens: parseItens(
     z.object({
@@ -63,6 +64,8 @@ const transferenciaSchema = z.object({
 const entradaSchema = z.object({
   depositoId: z.string().min(1, "Selecione o depósito."),
   fornecedorId: z.string().trim().optional(),
+  clienteId: z.string().trim().optional(),
+  documento: z.string().trim().optional(),
   observacao: z.string().trim().transform(normalizarTexto).optional(),
   itens: parseItens(
     z.object({
@@ -76,7 +79,9 @@ const entradaSchema = z.object({
 const saidaSchema = z.object({
   depositoId: z.string().min(1, "Selecione o depósito."),
   clienteId: z.string().trim().optional(),
+  fornecedorId: z.string().trim().optional(),
   vendedorId: z.string().trim().optional(),
+  documento: z.string().trim().optional(),
   observacao: z.string().trim().transform(normalizarTexto).optional(),
   modoAjuste: z.enum(["nenhum", "desconto", "acrescimo"]),
   formatoAjuste: z.enum(["percentual", "valor"]),
@@ -144,6 +149,7 @@ export async function criarLancamento(_prev: LancamentoFormState, formData: Form
     const parsed = transferenciaSchema.safeParse({
       depositoOrigemId: formData.get("depositoOrigemId"),
       depositoDestinoId: formData.get("depositoDestinoId"),
+      documento: formData.get("documento") || undefined,
       observacao: formData.get("observacao"),
       itens: formData.get("itens"),
     });
@@ -164,6 +170,7 @@ export async function criarLancamento(_prev: LancamentoFormState, formData: Form
         empresaId,
         grupoId,
         usuarioId: session.user.id,
+        documento: parsed.data.documento || null,
         observacao: parsed.data.observacao || null,
         itens: { create: toItensCreate(tipo, parsed.data.itens) },
       },
@@ -173,6 +180,8 @@ export async function criarLancamento(_prev: LancamentoFormState, formData: Form
     const parsed = entradaSchema.safeParse({
       depositoId: formData.get("depositoId"),
       fornecedorId: formData.get("fornecedorId") || undefined,
+      clienteId: formData.get("clienteId") || undefined,
+      documento: formData.get("documento") || undefined,
       observacao: formData.get("observacao"),
       itens: formData.get("itens"),
     });
@@ -187,8 +196,12 @@ export async function criarLancamento(_prev: LancamentoFormState, formData: Form
         depositoId: parsed.data.depositoId,
         empresaId,
         grupoId,
-        fornecedorId: parsed.data.fornecedorId || null,
+        // devolucao_cliente é a única entrada com contraparte cliente (não
+        // fornecedor) — precisa ir pro CreditoDevolucao gerado ao fechar.
+        fornecedorId: tipo === "devolucao_cliente" ? null : parsed.data.fornecedorId || null,
+        clienteId: tipo === "devolucao_cliente" ? parsed.data.clienteId || null : null,
         usuarioId: session.user.id,
+        documento: parsed.data.documento || null,
         observacao: parsed.data.observacao || null,
         itens: { create: toItensCreate(tipo, parsed.data.itens) },
       },
@@ -198,7 +211,9 @@ export async function criarLancamento(_prev: LancamentoFormState, formData: Form
     const parsed = saidaSchema.safeParse({
       depositoId: formData.get("depositoId"),
       clienteId: formData.get("clienteId") || undefined,
+      fornecedorId: formData.get("fornecedorId") || undefined,
       vendedorId: formData.get("vendedorId") || undefined,
+      documento: formData.get("documento") || undefined,
       observacao: formData.get("observacao"),
       modoAjuste: formData.get("modoAjuste"),
       formatoAjuste: formData.get("formatoAjuste"),
@@ -217,9 +232,13 @@ export async function criarLancamento(_prev: LancamentoFormState, formData: Form
         depositoId: parsed.data.depositoId,
         empresaId,
         grupoId,
-        clienteId: parsed.data.clienteId || null,
+        // devolucao_fornecedor é a única saída com contraparte fornecedor
+        // (não cliente) — precisa ir pro CreditoDevolucao gerado ao fechar.
+        clienteId: tipo === "devolucao_fornecedor" ? null : parsed.data.clienteId || null,
+        fornecedorId: tipo === "devolucao_fornecedor" ? parsed.data.fornecedorId || null : null,
         vendedorId: parsed.data.vendedorId || null,
         usuarioId: session.user.id,
+        documento: parsed.data.documento || null,
         observacao: parsed.data.observacao || null,
         modoAjuste: parsed.data.modoAjuste,
         formatoAjuste: parsed.data.formatoAjuste,
@@ -264,6 +283,7 @@ export async function atualizarLancamento(
     const parsed = transferenciaSchema.safeParse({
       depositoOrigemId: formData.get("depositoOrigemId"),
       depositoDestinoId: formData.get("depositoDestinoId"),
+      documento: formData.get("documento") || undefined,
       observacao: formData.get("observacao"),
       itens: formData.get("itens"),
     });
@@ -280,6 +300,7 @@ export async function atualizarLancamento(
       depositoDestinoId: parsed.data.depositoDestinoId,
       empresaId,
       grupoId,
+      documento: parsed.data.documento || null,
       observacao: parsed.data.observacao || null,
     };
     itensCreate = toItensCreate(tipo, parsed.data.itens);
@@ -287,6 +308,8 @@ export async function atualizarLancamento(
     const parsed = entradaSchema.safeParse({
       depositoId: formData.get("depositoId"),
       fornecedorId: formData.get("fornecedorId") || undefined,
+      clienteId: formData.get("clienteId") || undefined,
+      documento: formData.get("documento") || undefined,
       observacao: formData.get("observacao"),
       itens: formData.get("itens"),
     });
@@ -298,7 +321,9 @@ export async function atualizarLancamento(
       depositoId: parsed.data.depositoId,
       empresaId,
       grupoId,
-      fornecedorId: parsed.data.fornecedorId || null,
+      fornecedorId: tipo === "devolucao_cliente" ? null : parsed.data.fornecedorId || null,
+      clienteId: tipo === "devolucao_cliente" ? parsed.data.clienteId || null : null,
+      documento: parsed.data.documento || null,
       observacao: parsed.data.observacao || null,
     };
     itensCreate = toItensCreate(tipo, parsed.data.itens);
@@ -306,7 +331,9 @@ export async function atualizarLancamento(
     const parsed = saidaSchema.safeParse({
       depositoId: formData.get("depositoId"),
       clienteId: formData.get("clienteId") || undefined,
+      fornecedorId: formData.get("fornecedorId") || undefined,
       vendedorId: formData.get("vendedorId") || undefined,
+      documento: formData.get("documento") || undefined,
       observacao: formData.get("observacao"),
       modoAjuste: formData.get("modoAjuste"),
       formatoAjuste: formData.get("formatoAjuste"),
@@ -322,8 +349,10 @@ export async function atualizarLancamento(
       depositoId: parsed.data.depositoId,
       empresaId,
       grupoId,
-      clienteId: parsed.data.clienteId || null,
+      clienteId: tipo === "devolucao_fornecedor" ? null : parsed.data.clienteId || null,
+      fornecedorId: tipo === "devolucao_fornecedor" ? parsed.data.fornecedorId || null : null,
       vendedorId: parsed.data.vendedorId || null,
+      documento: parsed.data.documento || null,
       observacao: parsed.data.observacao || null,
       modoAjuste: parsed.data.modoAjuste,
       formatoAjuste: parsed.data.formatoAjuste,
@@ -426,6 +455,37 @@ export async function finalizarLancamento(
             usuarioId: session.user.id,
             observacao: atual.observacao ?? undefined,
             lancamentoId: atual.id,
+          });
+        }
+      }
+
+      // Devolução (compra ou venda) gera crédito de devolução automaticamente,
+      // valorizado pelas Movimentacao que ESTE lançamento acabou de gravar
+      // (nunca re-derivado do ItemLancamento — evita divergir do que o
+      // Kardex já considerou definitivo). Cada devolução tem seu próprio
+      // saldo, nunca agregado num pote por fornecedor/cliente (ver
+      // CreditoDevolucao) — pode ser usado parcialmente numa Renegociação.
+      if (atual.tipo === "devolucao_fornecedor" || atual.tipo === "devolucao_cliente") {
+        const geradas = await tx.movimentacao.findMany({ where: { lancamentoId: atual.id } });
+        const valorTotal = geradas.reduce((acc, m) => {
+          // devolucao_cliente é ENTRADA: custoUnitario é o valor digitado pro
+          // Kardex. devolucao_fornecedor é SAÍDA: nunca tem custoUnitario
+          // próprio (saída sempre debita ao custo médio vigente), então usa
+          // custoMedioApos — exatamente o valor que essa saída debitou.
+          const valorUnitario = atual.tipo === "devolucao_cliente" ? m.custoUnitario : m.custoMedioApos;
+          return acc.plus(m.quantidade.times(valorUnitario ?? new Prisma.Decimal(0)));
+        }, new Prisma.Decimal(0));
+
+        if (valorTotal.greaterThan(0)) {
+          await tx.creditoDevolucao.create({
+            data: {
+              empresaId: atual.empresaId,
+              lancamentoId: atual.id,
+              fornecedorId: atual.tipo === "devolucao_fornecedor" ? atual.fornecedorId : null,
+              clienteId: atual.tipo === "devolucao_cliente" ? atual.clienteId : null,
+              valorOriginal: valorTotal,
+              saldoDisponivel: valorTotal,
+            },
           });
         }
       }

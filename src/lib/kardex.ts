@@ -709,6 +709,7 @@ export async function estornarLinhaDeMovimentoNaTransacao(
         usuarioId,
         observacao,
         estornoDeId: original.id,
+        ordemProducaoId: original.ordemProducaoId,
       },
     });
   } else {
@@ -751,6 +752,7 @@ export async function estornarLinhaDeMovimentoNaTransacao(
           usuarioId,
           observacao,
           estornoDeId: original.id,
+          ordemProducaoId: original.ordemProducaoId,
         },
       });
     } else {
@@ -777,6 +779,7 @@ export async function estornarLinhaDeMovimentoNaTransacao(
           usuarioId,
           observacao,
           estornoDeId: original.id,
+          ordemProducaoId: original.ordemProducaoId,
         },
       });
     }

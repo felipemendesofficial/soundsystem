@@ -162,6 +162,7 @@ model Empresa {
   movimentosAplicacao               MovimentoAplicacao[]
   movimentacoesFinanceiras          MovimentacaoFinanceira[]
   operadorasCartao                  OperadoraCartao[]
+  creditosDevolucao                 CreditoDevolucao[]
 
   @@map("empresas")
 }
@@ -258,6 +259,8 @@ model Fornecedor {
   transferenciasOrigem              TransferenciaEntreContas[]       @relation("TransfOrigemFornecedor")
   transferenciasDestino             TransferenciaEntreContas[]       @relation("TransfDestinoFornecedor")
   baixasAdiantamento                Baixa[]                          @relation("BaixaAdiantamentoFornecedor")
+  renegociacoesDestino              RenegociacaoDestino[]
+  creditosDevolucao                 CreditoDevolucao[]
 
   @@map("fornecedores")
 }
@@ -267,6 +270,7 @@ model Cliente {
   grupoId             String      @map("grupo_id")
   nome                String
   tipoCliente         TipoCliente @map("tipo_cliente")
+  documento           String? // CPF ou CNPJ — usado pra agrupar clientes do mesmo radical de CNPJ na Renegociação
   telefone            String?
   email               String?
   tabelaPrecoPadraoId String?     @map("tabela_preco_padrao_id")
@@ -285,6 +289,8 @@ model Cliente {
   transferenciasOrigem              TransferenciaEntreContas[]       @relation("TransfOrigemCliente")
   transferenciasDestino             TransferenciaEntreContas[]       @relation("TransfDestinoCliente")
   baixasAdiantamento                Baixa[]                          @relation("BaixaAdiantamentoCliente")
+  renegociacoesDestino              RenegociacaoDestino[]
+  creditosDevolucao                 CreditoDevolucao[]
 
   @@map("clientes")
 }
@@ -503,6 +509,7 @@ model Lancamento {
   clienteId         String?          @map("cliente_id")
   vendedorId        String?          @map("vendedor_id")
   usuarioId         String           @map("usuario_id")
+  documento         String? // número da nota fiscal/comprovante, quando existir — informativo, nunca obrigatório
   observacao        String?
   criadoEm          DateTime         @default(now()) @map("criado_em")
   fechadoEm         DateTime?        @map("fechado_em")
@@ -517,17 +524,18 @@ model Lancamento {
   formatoAjuste FormatoAjuste @default(percentual) @map("formato_ajuste")
   valorAjuste   Decimal       @default(0) @map("valor_ajuste") @db.Decimal(14, 2)
 
-  deposito        Deposito?        @relation("LancamentoDeposito", fields: [depositoId], references: [id])
-  depositoOrigem  Deposito?        @relation("LancamentoDepositoOrigem", fields: [depositoOrigemId], references: [id])
-  depositoDestino Deposito?        @relation("LancamentoDepositoDestino", fields: [depositoDestinoId], references: [id])
-  empresa         Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
-  grupo           GrupoEmpresarial @relation(fields: [grupoId], references: [id], onDelete: Restrict)
-  fornecedor      Fornecedor?      @relation(fields: [fornecedorId], references: [id])
-  cliente         Cliente?         @relation(fields: [clienteId], references: [id])
-  vendedor        Vendedor?        @relation(fields: [vendedorId], references: [id])
-  usuario         Usuario          @relation(fields: [usuarioId], references: [id])
-  itens           ItemLancamento[]
-  movimentacoes   Movimentacao[]
+  deposito         Deposito?         @relation("LancamentoDeposito", fields: [depositoId], references: [id])
+  depositoOrigem   Deposito?         @relation("LancamentoDepositoOrigem", fields: [depositoOrigemId], references: [id])
+  depositoDestino  Deposito?         @relation("LancamentoDepositoDestino", fields: [depositoDestinoId], references: [id])
+  empresa          Empresa           @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  grupo            GrupoEmpresarial  @relation(fields: [grupoId], references: [id], onDelete: Restrict)
+  fornecedor       Fornecedor?       @relation(fields: [fornecedorId], references: [id])
+  cliente          Cliente?          @relation(fields: [clienteId], references: [id])
+  vendedor         Vendedor?         @relation(fields: [vendedorId], references: [id])
+  usuario          Usuario           @relation(fields: [usuarioId], references: [id])
+  itens            ItemLancamento[]
+  movimentacoes    Movimentacao[]
+  creditoDevolucao CreditoDevolucao?
 
   @@index([empresaId, criadoEm])
   @@map("lancamentos")
@@ -1178,6 +1186,7 @@ model Processo {
   itens                  ProcessoItem[]
   lancamentos            LancamentoFinanceiro[]
   lancamentosRecorrentes LancamentoFinanceiroRecorrente[]
+  renegociacoesDestino   RenegociacaoDestino[]
 
   // Restrição de "só 1 padrao=true por empresa" implementada via índice único
   // parcial na migration: CREATE UNIQUE INDEX ... WHERE padrao = true
@@ -1199,8 +1208,9 @@ model ProcessoItem {
   pai      ProcessoItem?  @relation("ProcessoItemHierarquia", fields: [paiId], references: [id])
   filhos   ProcessoItem[] @relation("ProcessoItemHierarquia")
 
-  rateios            LancamentoRateioProcesso[]
-  rateiosRecorrentes LancamentoFinanceiroRecorrenteRateioProcesso[]
+  rateios              LancamentoRateioProcesso[]
+  rateiosRecorrentes   LancamentoFinanceiroRecorrenteRateioProcesso[]
+  renegociacoesDestino RenegociacaoDestino[]
 
   @@unique([processoId, codigo])
   @@map("processo_itens")
@@ -1274,7 +1284,7 @@ model LancamentoFinanceiro {
   dadosCheque         DadosCheque?
   dadosCartao         DadosCartao?
   movimentacoes       MovimentacaoFinanceira[]
-  renegociacaoOrigem  RenegociacaoOrigem?
+  renegociacoesOrigem RenegociacaoOrigem[]
   renegociacaoDestino RenegociacaoDestino?
 
   @@index([empresaId, status])
@@ -1812,59 +1822,140 @@ model LancamentoFinanceiroRecorrenteRateioProcesso {
   @@map("lancamentos_financeiros_recorrentes_rateio_processo")
 }
 
+enum StatusRenegociacao {
+  aberta // rascunho — nada foi reclassificado ainda, títulos de origem continuam "aberto"
+  fechada // reclassificação de verdade aconteceu (origens -> renegociado, destinos criados)
+  cancelada // rascunho descartado sem tocar em nada — títulos liberados de novo
+  estornada // fechada e depois revertida — só possível se nenhum destino foi baixado
+}
+
 /// Fecha um ou vários títulos existentes sem movimentar dinheiro (nunca gera
 /// Baixa/MovimentacaoFinanceira), substituindo por um ou vários títulos
-/// novos com juros/multa/desconto. Mantém trilha de auditoria encadeável —
-/// um título novo pode, futuramente, virar origem de outra Renegociacao (ver
-/// RenegociacaoDestino.lancamentoId, que também pode aparecer como
-/// RenegociacaoOrigem.lancamentoId em outra linha).
+/// novos com juros/multa/desconto. Ciclo de vida: aberta (rascunho, nada
+/// reclassificado) -> fechada (reclassificação de verdade, via
+/// `fecharRenegociacao`) -> opcionalmente estornada (desfaz tudo, só se
+/// nenhum destino foi baixado) — ou aberta -> cancelada (descarta o
+/// rascunho). Um título só pode estar numa renegociação `aberta` OU
+/// `fechada` por vez — `cancelada`/`estornada` liberam ele de novo.
 model Renegociacao {
   id          String                   @id @default(uuid())
   empresaId   String                   @map("empresa_id")
   tipo        TipoLancamentoFinanceiro // origem e destino sempre do mesmo tipo — nunca mistura despesa com receita
   motivo      String
+  status      StatusRenegociacao       @default(aberta)
   criadoPorId String                   @map("criado_por_id")
   criadoEm    DateTime                 @default(now()) @map("criado_em")
+  fechadoEm   DateTime?                @map("fechado_em")
+  estornadoEm DateTime?                @map("estornado_em")
 
   empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Restrict)
   criadoPor Usuario @relation(fields: [criadoPorId], references: [id])
 
-  origens  RenegociacaoOrigem[]
-  destinos RenegociacaoDestino[]
+  origens        RenegociacaoOrigem[]
+  destinos       RenegociacaoDestino[]
+  creditosUsados CreditoDevolucaoUtilizado[]
 
-  @@index([empresaId])
+  @@index([empresaId, status])
   @@map("renegociacoes")
 }
 
 model RenegociacaoOrigem {
   id             String @id @default(uuid())
   renegociacaoId String @map("renegociacao_id")
-  lancamentoId   String @unique @map("lancamento_id") // um título só pode ser origem de UMA renegociação
+  lancamentoId   String @map("lancamento_id")
 
+  // Sem @unique de propósito — um título pode passar por várias
+  // renegociações ao longo do tempo (uma cancelada/estornada, outra nova
+  // depois). "Só uma renegociação aberta/fechada por título" é garantido na
+  // aplicação (checado antes de reservar), não pelo schema.
   renegociacao Renegociacao         @relation(fields: [renegociacaoId], references: [id], onDelete: Cascade)
   lancamento   LancamentoFinanceiro @relation(fields: [lancamentoId], references: [id])
 
   @@map("renegociacoes_origens")
 }
 
+/// Guarda os dados do título de destino como dado bruto (não como
+/// LancamentoFinanceiro) enquanto a Renegociacao está `aberta` — nada é
+/// reclassificado até o Fechar. `lancamentoId` só é preenchido nesse
+/// momento, quando o título de destino de verdade é criado.
 model RenegociacaoDestino {
-  id                    String  @id @default(uuid())
-  renegociacaoId        String  @map("renegociacao_id")
-  lancamentoId          String  @unique @map("lancamento_id")
-  juros                 Decimal @default(0) @db.Decimal(14, 2)
-  multa                 Decimal @default(0) @db.Decimal(14, 2)
-  desconto              Decimal @default(0) @db.Decimal(14, 2)
-  justificativaDesconto String? @map("justificativa_desconto") // obrigatória na Server Action quando desconto > 0
+  id                    String        @id @default(uuid())
+  renegociacaoId        String        @map("renegociacao_id")
+  lancamentoId          String?       @unique @map("lancamento_id")
+  historicoSimplificado String        @map("historico_simplificado")
+  clienteId             String?       @map("cliente_id")
+  fornecedorId          String?       @map("fornecedor_id")
+  tipoDocumento         TipoDocumento @map("tipo_documento")
+  processoId            String        @map("processo_id")
+  processoItemId        String        @map("processo_item_id")
+  dataEmissao           DateTime      @map("data_emissao")
+  dataVencimento        DateTime      @map("data_vencimento")
+  valorOriginal         Decimal       @map("valor_original") @db.Decimal(14, 2)
+  juros                 Decimal       @default(0) @db.Decimal(14, 2)
+  multa                 Decimal       @default(0) @db.Decimal(14, 2)
+  desconto              Decimal       @default(0) @db.Decimal(14, 2)
+  justificativaDesconto String?       @map("justificativa_desconto") // obrigatória na Server Action quando desconto > 0
 
-  renegociacao Renegociacao         @relation(fields: [renegociacaoId], references: [id], onDelete: Cascade)
-  lancamento   LancamentoFinanceiro @relation(fields: [lancamentoId], references: [id])
+  renegociacao Renegociacao          @relation(fields: [renegociacaoId], references: [id], onDelete: Cascade)
+  lancamento   LancamentoFinanceiro? @relation(fields: [lancamentoId], references: [id])
+  cliente      Cliente?              @relation(fields: [clienteId], references: [id])
+  fornecedor   Fornecedor?           @relation(fields: [fornecedorId], references: [id])
+  processo     Processo              @relation(fields: [processoId], references: [id])
+  processoItem ProcessoItem          @relation(fields: [processoItemId], references: [id])
 
   @@map("renegociacoes_destinos")
+}
+
+/// Crédito gerado por UMA devolução (compra ou venda) — nasce automaticamente
+/// ao finalizar um `Lancamento` de estoque tipo devolucao_fornecedor/
+/// devolucao_cliente (ver `finalizarLancamento`), valorizado pelos mesmos
+/// custos que a própria Movimentacao gravou (nunca re-derivado do
+/// ItemLancamento, pra não divergir do que o Kardex já considerou
+/// definitivo). Cada devolução mantém seu PRÓPRIO saldo — nunca agregado
+/// num pote único por fornecedor/cliente — porque pode ser usado
+/// parcialmente numa Renegociação e sobrar pra uma futura.
+model CreditoDevolucao {
+  id              String   @id @default(uuid())
+  empresaId       String   @map("empresa_id")
+  lancamentoId    String   @unique @map("lancamento_id")
+  fornecedorId    String?  @map("fornecedor_id")
+  clienteId       String?  @map("cliente_id")
+  valorOriginal   Decimal  @map("valor_original") @db.Decimal(14, 2)
+  saldoDisponivel Decimal  @map("saldo_disponivel") @db.Decimal(14, 2)
+  criadoEm        DateTime @default(now()) @map("criado_em")
+
+  empresa    Empresa                     @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  lancamento Lancamento                  @relation(fields: [lancamentoId], references: [id])
+  fornecedor Fornecedor?                 @relation(fields: [fornecedorId], references: [id])
+  cliente    Cliente?                    @relation(fields: [clienteId], references: [id])
+  usos       CreditoDevolucaoUtilizado[]
+
+  @@index([fornecedorId])
+  @@index([clienteId])
+  @@map("creditos_devolucao")
+}
+
+/// Quanto de UM CreditoDevolucao foi consumido em UMA Renegociacao — permite
+/// uso parcial (o resto fica disponível) e desfazer no estorno da
+/// Renegociacao (deleta a linha, devolve `saldoDisponivel`), mesmo padrão já
+/// usado em ChequeTerceiroUtilizado.
+model CreditoDevolucaoUtilizado {
+  id                 String   @id @default(uuid())
+  creditoDevolucaoId String   @map("credito_devolucao_id")
+  renegociacaoId     String   @map("renegociacao_id")
+  valorUtilizado     Decimal  @map("valor_utilizado") @db.Decimal(14, 2)
+  criadoEm           DateTime @default(now()) @map("criado_em")
+
+  creditoDevolucao CreditoDevolucao @relation(fields: [creditoDevolucaoId], references: [id], onDelete: Cascade)
+  renegociacao     Renegociacao     @relation(fields: [renegociacaoId], references: [id], onDelete: Cascade)
+
+  @@map("creditos_devolucao_utilizados")
 }
 
 enum StatusOrdemProducao {
   aberta
   processada
+  cancelada
 }
 
 /// Novo tipo de movimento no Kardex: consome N produtos/serviços do estoque
@@ -1873,6 +1964,7 @@ enum StatusOrdemProducao {
 /// Orçamento/Lancamento (ver kardex.ts).
 model OrdemProducao {
   id                    String              @id @default(uuid())
+  numero                Int                 @unique @default(autoincrement())
   empresaId             String              @map("empresa_id")
   depositoEntradaId     String              @map("deposito_entrada_id") // único depósito de destino do produto final
   produtoFinalId        String              @map("produto_final_id")

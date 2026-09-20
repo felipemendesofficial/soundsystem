@@ -1,10 +1,13 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { podeLancarMovimentacao, podeVerCusto } from "@/lib/permissions";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ConfirmarAcaoButton } from "@/components/confirmar-acao-button";
-import { processarOrdemProducao, estornarProcessamentoOrdemProducao, excluirOrdemProducao } from "../actions";
+import { processarOrdemProducao, estornarProcessamentoOrdemProducao, cancelarOrdemProducao } from "../actions";
 
 function formatarMoeda(valor: unknown) {
   return Number(valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -34,12 +37,28 @@ export default async function DetalheOrdemProducaoPage({ params }: { params: Pro
 
   const custoServicos = ordem.servicos.reduce((acc, s) => acc + Number(s.valor), 0);
 
+  // Enquanto aberta, os materiais ainda não foram debitados — mostra uma
+  // ESTIMATIVA usando o custo médio atual de cada produto no depósito de
+  // saída daquela linha (pode mudar até o processamento de fato acontecer).
+  let custosEstimados: Map<string, Prisma.Decimal> = new Map();
+  if (ordem.status === "aberta" && ordem.materiais.length > 0) {
+    const estoques = await db.produtoEstoque.findMany({
+      where: { OR: ordem.materiais.map((m) => ({ produtoId: m.produtoId, depositoId: m.depositoId })) },
+    });
+    custosEstimados = new Map(estoques.map((e) => [`${e.produtoId}|${e.depositoId}`, e.custoMedioAtual]));
+  }
+  const custoTotalEstimado = ordem.materiais.reduce(
+    (acc, m) => acc + Number(m.quantidade) * Number(custosEstimados.get(`${m.produtoId}|${m.depositoId}`) ?? 0),
+    custoServicos
+  );
+  const custoUnitarioFinalEstimado = Number(ordem.quantidadeEntrada) > 0 ? custoTotalEstimado / Number(ordem.quantidadeEntrada) : 0;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <h1 className="text-2xl font-semibold">Ordem de Produção</h1>
-        <Badge variant={ordem.status === "processada" ? "default" : "secondary"}>
-          {ordem.status === "processada" ? "Processada" : "Aberta"}
+        <h1 className="text-2xl font-semibold">OP {ordem.numero}</h1>
+        <Badge variant={ordem.status === "processada" ? "default" : ordem.status === "cancelada" ? "outline" : "secondary"}>
+          {ordem.status === "processada" ? "Processada" : ordem.status === "cancelada" ? "Cancelada" : "Aberta"}
         </Badge>
       </div>
 
@@ -49,6 +68,9 @@ export default async function DetalheOrdemProducaoPage({ params }: { params: Pro
         <div className="flex justify-between"><span className="text-muted-foreground">Depósito de Entrada</span><span className="font-medium">{ordem.depositoEntrada.nome}</span></div>
         {verCusto && ordem.custoUnitarioFinal !== null && (
           <div className="flex justify-between"><span className="text-muted-foreground">Custo Unitário Final</span><span className="font-medium">{formatarMoeda(ordem.custoUnitarioFinal)}</span></div>
+        )}
+        {verCusto && ordem.status === "aberta" && (
+          <div className="flex justify-between"><span className="text-muted-foreground">Custo Unitário Final (estimado)</span><span className="font-medium">{formatarMoeda(custoUnitarioFinalEstimado)}</span></div>
         )}
         <div className="flex justify-between"><span className="text-muted-foreground">Criado por</span><span className="font-medium">{ordem.usuario.nome} · {formatarData(ordem.criadoEm)}</span></div>
         {ordem.processadoEm && (
@@ -65,6 +87,11 @@ export default async function DetalheOrdemProducaoPage({ params }: { params: Pro
               <div className="text-xs text-muted-foreground">Saída de: {m.deposito.nome}</div>
               {verCusto && m.custoUnitarioDebitado !== null && (
                 <div className="text-xs text-muted-foreground">Custo debitado: {formatarMoeda(m.custoUnitarioDebitado)}/un.</div>
+              )}
+              {verCusto && m.custoUnitarioDebitado === null && (
+                <div className="text-xs text-muted-foreground">
+                  Custo estimado: {formatarMoeda(custosEstimados.get(`${m.produtoId}|${m.depositoId}`) ?? 0)}/un.
+                </div>
               )}
             </li>
           ))}
@@ -88,8 +115,11 @@ export default async function DetalheOrdemProducaoPage({ params }: { params: Pro
       )}
 
       <div className="flex gap-3">
-        {ordem.status === "aberta" ? (
+        {ordem.status === "aberta" && (
           <>
+            <Button variant="outline" render={<Link href={`/ordens-producao/${id}/editar`} />}>
+              Editar
+            </Button>
             <ConfirmarAcaoButton
               action={processarOrdemProducao.bind(null, id)}
               label="Processar"
@@ -98,15 +128,16 @@ export default async function DetalheOrdemProducaoPage({ params }: { params: Pro
               descricao="Consome os materiais dos depósitos indicados e gera a entrada do produto final com o custo médio recalculado. Pode ser revertido depois."
             />
             <ConfirmarAcaoButton
-              action={excluirOrdemProducao.bind(null, id)}
-              label="Excluir"
-              labelPendente="Excluindo..."
-              titulo="Excluir Ordem de Produção?"
-              descricao="Só possível enquanto está aberta — nenhum estoque foi movimentado ainda."
+              action={cancelarOrdemProducao.bind(null, id)}
+              label="Cancelar"
+              labelPendente="Cancelando..."
+              titulo="Cancelar Ordem de Produção?"
+              descricao="Não apaga o registro — fica marcada como Cancelada, disponível pra consulta depois. Só possível enquanto está aberta, já que nenhum estoque foi movimentado ainda."
               variant="outline"
             />
           </>
-        ) : (
+        )}
+        {ordem.status === "processada" && (
           <ConfirmarAcaoButton
             action={estornarProcessamentoOrdemProducao.bind(null, id)}
             label="Estornar Processamento"

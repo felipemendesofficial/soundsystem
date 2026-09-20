@@ -11,6 +11,7 @@ export type ItemFornecedor = {
   documento: string;
   telefone: string;
   saldoAdiantamento: string | null;
+  creditoDevolucao: string | null;
   buscaTexto: string;
 };
 
@@ -64,6 +65,12 @@ export function FornecedoresLista({ itens }: { itens: ItemFornecedor[] }) {
                   <span className="text-muted-foreground">Saldo de adiantamento</span>
                   <span className="font-medium text-primary">{item.saldoAdiantamento}</span>
                 </Link>
+              )}
+              {item.creditoDevolucao !== null && (
+                <div className="flex items-center justify-between border-t border-border px-3 py-2 text-sm">
+                  <span className="text-muted-foreground">Crédito de devolução</span>
+                  <span className="font-medium text-primary">{item.creditoDevolucao}</span>
+                </div>
               )}
             </li>
           ))}

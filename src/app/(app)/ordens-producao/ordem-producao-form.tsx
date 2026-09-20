@@ -34,26 +34,40 @@ function novaChave() {
 const labelClass = "text-[15px] font-semibold";
 const inputClass = "h-11 px-3.5 text-base bg-card";
 
+export type OrdemProducaoDefaultValues = {
+  depositoEntradaId: string;
+  produtoFinal: ItemRateio;
+  quantidadeEntrada: string;
+  materiais: { produto: ItemRateio; depositoId: string; quantidade: string }[];
+  servicos: { servico: ItemRateio; valor: string }[];
+};
+
 export function OrdemProducaoForm({
   action,
   depositos,
   produtos,
   servicos,
+  defaultValues,
 }: {
   action: Action;
   depositos: ItemRateio[];
   produtos: ItemRateio[];
   servicos: ItemRateio[];
+  defaultValues?: OrdemProducaoDefaultValues;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
 
   const depositoUnico = depositos.length === 1 ? depositos[0].id : "";
-  const [depositoEntradaId, setDepositoEntradaId] = useState(depositoUnico);
-  const [produtoFinal, setProdutoFinal] = useState<ItemRateio | null>(null);
-  const [quantidadeEntrada, setQuantidadeEntrada] = useState("");
+  const [depositoEntradaId, setDepositoEntradaId] = useState(defaultValues?.depositoEntradaId ?? depositoUnico);
+  const [produtoFinal, setProdutoFinal] = useState<ItemRateio | null>(defaultValues?.produtoFinal ?? null);
+  const [quantidadeEntrada, setQuantidadeEntrada] = useState(defaultValues?.quantidadeEntrada ?? "");
 
-  const [materiais, setMateriais] = useState<LinhaMaterial[]>([]);
-  const [servicosLinhas, setServicosLinhas] = useState<LinhaServico[]>([]);
+  const [materiais, setMateriais] = useState<LinhaMaterial[]>(() =>
+    (defaultValues?.materiais ?? []).map((m) => ({ key: novaChave(), produto: m.produto, depositoId: m.depositoId, quantidade: m.quantidade }))
+  );
+  const [servicosLinhas, setServicosLinhas] = useState<LinhaServico[]>(() =>
+    (defaultValues?.servicos ?? []).map((s) => ({ key: novaChave(), servico: s.servico, valor: s.valor }))
+  );
 
   function adicionarMaterial() {
     setMateriais((atual) => [...atual, { key: novaChave(), produto: null, depositoId: depositoUnico, quantidade: "" }]);

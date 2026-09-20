@@ -116,6 +116,7 @@ export function LancamentoForm({
     fornecedorId: string | null;
     clienteId: string | null;
     vendedorId: string | null;
+    documento: string | null;
     observacao: string | null;
     modoAjuste: ModoAjuste;
     formatoAjuste: FormatoAjuste;
@@ -331,7 +332,7 @@ export function LancamentoForm({
         </div>
       )}
 
-      {ehEntrada && (
+      {(ehEntrada || tipoMovimento === "devolucao_fornecedor") && (
         <div className="space-y-2">
           <Label htmlFor="fornecedorId" className={labelClass}>Fornecedor</Label>
           <Select name="fornecedorId" defaultValue={defaultValues?.fornecedorId ?? undefined} items={fornecedoresItems}>
@@ -349,33 +350,35 @@ export function LancamentoForm({
         </div>
       )}
 
+      {(ehVenda || tipoMovimento === "devolucao_cliente") && (
+        <div className="space-y-2">
+          <Label htmlFor="clienteId" className={labelClass}>Cliente</Label>
+          <Select
+            name="clienteId"
+            value={clienteId}
+            items={clientesItems}
+            onValueChange={(valor) => {
+              setClienteId(valor ?? "");
+              const cliente = clientes.find((c) => c.id === valor);
+              setTabelaPrecoId(cliente?.tabelaPrecoPadraoId ?? "");
+            }}
+          >
+            <SelectTrigger id="clienteId" className={`w-full ${inputClass}`}>
+              <SelectValue placeholder="Nenhum" />
+            </SelectTrigger>
+            <SelectContent>
+              {clientes.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {ehSaida && ehVenda && (
         <>
-          <div className="space-y-2">
-            <Label htmlFor="clienteId" className={labelClass}>Cliente</Label>
-            <Select
-              name="clienteId"
-              value={clienteId}
-              items={clientesItems}
-              onValueChange={(valor) => {
-                setClienteId(valor ?? "");
-                const cliente = clientes.find((c) => c.id === valor);
-                setTabelaPrecoId(cliente?.tabelaPrecoPadraoId ?? "");
-              }}
-            >
-              <SelectTrigger id="clienteId" className={`w-full ${inputClass}`}>
-                <SelectValue placeholder="Nenhum" />
-              </SelectTrigger>
-              <SelectContent>
-                {clientes.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           <div className="space-y-2">
             <Label htmlFor="vendedorId" className={labelClass}>Vendedor</Label>
             <Select
@@ -626,6 +629,11 @@ export function LancamentoForm({
           </div>
         </div>
       )}
+
+      <div className="space-y-2">
+        <Label htmlFor="documento" className={labelClass}>Número do Documento (opcional)</Label>
+        <Input id="documento" name="documento" defaultValue={defaultValues?.documento ?? ""} className={inputClass} />
+      </div>
 
       <div className="space-y-2">
         <Label htmlFor="observacao" className={labelClass}>Observação</Label>

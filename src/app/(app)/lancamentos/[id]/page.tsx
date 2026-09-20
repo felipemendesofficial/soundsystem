@@ -134,6 +134,7 @@ export default async function DetalheLancamentoPage({ params }: { params: Promis
             fornecedorId: lancamento.fornecedorId,
             clienteId: lancamento.clienteId,
             vendedorId: lancamento.vendedorId,
+            documento: lancamento.documento,
             observacao: lancamento.observacao,
             modoAjuste: lancamento.modoAjuste,
             formatoAjuste: lancamento.formatoAjuste,
@@ -177,6 +178,12 @@ export default async function DetalheLancamentoPage({ params }: { params: Promis
                 <div className="min-w-0">
                   <div className="mb-1 truncate text-[13px] text-muted-foreground">Vendedor</div>
                   <div className="truncate text-[15.5px] font-medium">{lancamento.vendedor.nome}</div>
+                </div>
+              )}
+              {lancamento.documento && (
+                <div className="min-w-0">
+                  <div className="mb-1 truncate text-[13px] text-muted-foreground">Documento</div>
+                  <div className="truncate text-[15.5px] font-medium">{lancamento.documento}</div>
                 </div>
               )}
               {lancamento.observacao && (

@@ -26,6 +26,7 @@ const TIPOS_ENTRADA = new Set<TipoMovimento>([
   "devolucao_cliente",
   "ajuste_entrada",
   "transferencia_entrada",
+  "op_entrada",
 ]);
 
 function podeEstornar(
@@ -36,12 +37,17 @@ function podeEstornar(
     ordemServicoId: string | null;
     orcamentoId: string | null;
     lancamentoId: string | null;
+    ordemProducaoId: string | null;
   },
   perfil: Perfil
 ) {
   if (!podeLancarMovimentacao(perfil)) return false;
   if (m.estornadoEm || m.estornoDeId) return false;
-  if (m.ordemServicoId || m.orcamentoId || m.lancamentoId) return false;
+  // Movimentos "donos" de outra tela nunca são estornáveis por aqui — cada um
+  // tem seu próprio fluxo de estorno que também atualiza o registro dono (OS/
+  // Orçamento/Lançamento/Ordem de Produção). Estornar genérico por aqui
+  // deixaria esse registro com referência solta pra um movimento já estornado.
+  if (m.ordemServicoId || m.orcamentoId || m.lancamentoId || m.ordemProducaoId) return false;
   if (!TIPOS_ESTORNAVEIS.has(m.tipoMovimento)) return false;
   if (perfil === "vendedor" && m.tipoMovimento !== "venda") return false;
   return true;
@@ -52,6 +58,7 @@ const TIPO_LABEL: Record<string, string> = {
   devolucao_cliente: "Devolução de Cliente",
   ajuste_entrada: "Ajuste (Entrada)",
   transferencia_entrada: "Transferência (Entrada)",
+  op_entrada: "Entrada por Ordem de Produção",
   venda: "Venda",
   devolucao_fornecedor: "Devolução a Fornecedor",
   perda_avaria: "Perda/Avaria",
@@ -59,6 +66,7 @@ const TIPO_LABEL: Record<string, string> = {
   ajuste_saida: "Ajuste (Saída)",
   transferencia_saida: "Transferência (Saída)",
   os_saida: "Baixa por Ordem de Serviço",
+  op_saida: "Saída por Ordem de Produção",
 };
 
 function formatarNumero(valor: unknown, casas = 3) {
@@ -102,14 +110,20 @@ export default async function KardexPage({
         ...(filtroPeriodo ? { dataMovimento: filtroPeriodo } : {}),
       },
       orderBy: { dataMovimento: "asc" },
-      include: { deposito: true, cliente: true, fornecedor: true, orcamento: true },
+      include: { deposito: true, cliente: true, fornecedor: true, orcamento: true, ordemProducao: { include: { produtoFinal: true } } },
     }),
   ]);
 
   if (!produto) notFound();
 
   const itensLista: ItemKardex[] = movimentacoes.map((m) => {
-    const estornoLabel = [m.estornoDeId && "Estorno", m.estornadoEm && "Estornado"]
+    // Estorno de um movimento de Ordem de Produção (ajuste_entrada/ajuste_saida
+    // gerado por `estornarLinhaDeMovimentoNaTransacao`, que herda o
+    // `ordemProducaoId` do movimento original) ganha um rótulo específico —
+    // "Ajuste (Entrada/Saída)" sozinho não deixa claro de onde veio.
+    const ehEstornoDeOP = (m.tipoMovimento === "ajuste_entrada" || m.tipoMovimento === "ajuste_saida") && !!m.ordemProducao;
+
+    const estornoLabel = [!ehEstornoDeOP && m.estornoDeId && "Estorno", m.estornadoEm && "Estornado"]
       .filter(Boolean)
       .join(" · ");
 
@@ -125,13 +139,21 @@ export default async function KardexPage({
       descritivo = partes.length > 0 ? partes.join(" · ") : undefined;
     } else if (m.tipoMovimento === "venda" || m.tipoMovimento === "os_saida") {
       descritivo = m.cliente?.nome;
+    } else if (m.tipoMovimento === "op_saida") {
+      // Saída de material consumido numa Ordem de Produção — mostra o
+      // número da OP (rótulo abreviado "OP N", não o nome completo) e o que
+      // ela fabricou, já que o produto consumido aqui pode ser bem diferente
+      // do produto final (às vezes nem é o mesmo Kardex sendo consultado).
+      descritivo = m.ordemProducao ? `OP ${m.ordemProducao.numero} · Fabricação de ${m.ordemProducao.produtoFinal.nome}` : undefined;
+    } else if (m.tipoMovimento === "op_entrada") {
+      descritivo = m.ordemProducao ? `OP ${m.ordemProducao.numero}` : undefined;
     }
 
     return {
       id: m.id,
       data: new Date(m.dataMovimento).toLocaleString("pt-BR"),
       depositoNome: m.deposito.nome,
-      tipoLabel: TIPO_LABEL[m.tipoMovimento],
+      tipoLabel: ehEstornoDeOP ? `Estorno de OP ${m.ordemProducao!.numero}` : TIPO_LABEL[m.tipoMovimento],
       isEntrada: TIPOS_ENTRADA.has(m.tipoMovimento),
       descritivo,
       estornoLabel: estornoLabel || undefined,
