@@ -49,6 +49,7 @@ export default async function EditarLancamentoFinanceiroPage({ params }: { param
     moraMes: lancamento.moraMes?.toString() ?? "",
     dataEmissao: formatarData(lancamento.dataEmissao),
     dataVencimento: formatarData(lancamento.dataVencimento),
+    dataPrevisao: formatarData(lancamento.dataPrevisao),
     processoId: lancamento.processoId,
     observacao: lancamento.observacao ?? "",
     rateioPlano: lancamento.rateios.map((r) => ({

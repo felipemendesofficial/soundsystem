@@ -101,6 +101,9 @@ export async function gerarRecolhimentoRetencao(
           valorOriginal: valorTotal,
           dataEmissao: dados.dataEmissao,
           dataVencimento: dados.dataVencimento,
+          // Recolhimento não tem tela própria pra prever divergência de
+          // pagamento — mesma suposição do backfill: igual ao vencimento.
+          dataPrevisao: dados.dataVencimento,
           dataMovimento,
           processoId: dados.processoId,
           observacao: dados.observacao || null,

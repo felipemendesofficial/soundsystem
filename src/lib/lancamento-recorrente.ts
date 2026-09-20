@@ -25,6 +25,19 @@ function montarData(ano: number, mes: number, diaDesejado: number): Date {
 }
 
 /**
+ * Soma N meses a uma data em UTC, clampando pro último dia real do mês de
+ * destino quando o dia original não existir nele (ex.: 31/01 + 1 mês ->
+ * 28 ou 29/02, nunca 02 ou 03/03) — mesma regra de `montarData`, usada pelo
+ * Parcelamento de Lançamento Financeiro pra espaçar vencimento/previsão das
+ * parcelas seguintes. Nunca usa getters/setters locais (ver o gotcha de fuso
+ * em `financeiro-ledger.ts`).
+ */
+export function adicionarMesesUTC(data: Date, meses: number): Date {
+  const base = inicioDoDiaUTC(data);
+  return montarData(base.getUTCFullYear(), base.getUTCMonth() + meses, base.getUTCDate());
+}
+
+/**
  * Próxima ocorrência de um Lançamento Recorrente: `última gerada + N meses`
  * (N conforme periodicidade, `diaVencimento` ajustado pro último dia real do
  * mês quando ele não existir, ex. dia 31 em fevereiro), ou a primeira

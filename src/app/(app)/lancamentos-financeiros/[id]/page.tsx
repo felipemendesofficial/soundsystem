@@ -7,8 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmarPrevisaoButton } from "@/components/confirmar-previsao-button";
 import { ExcluirLancamentoButton } from "@/components/excluir-lancamento-button";
+import { CancelarLancamentoButton } from "@/components/cancelar-lancamento-button";
+import { DataPrevisaoForm } from "@/components/data-previsao-form";
 import { TIPOS_DOCUMENTO_LABEL, TIPOS_TAXA_CARTAO_LABEL, TIPOS_CARTAO_MODALIDADE_LABEL } from "@/lib/financeiro-labels";
-import { confirmarPrevisao, excluirLancamentoFinanceiro } from "../actions";
+import { confirmarPrevisao, excluirLancamentoFinanceiro, atualizarDataPrevisao, cancelarLancamentoFinanceiro } from "../actions";
 
 function formatarMoeda(valor: unknown) {
   return Number(valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -79,6 +81,12 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
 
   const renegociacaoOrigemAtiva = lancamento.renegociacoesOrigem[0];
 
+  const totalAbertoNoGrupo = lancamento.grupoParcelamentoId
+    ? await db.lancamentoFinanceiro.count({
+        where: { grupoParcelamentoId: lancamento.grupoParcelamentoId, status: "aberto" },
+      })
+    : undefined;
+
   const contraparte = lancamento.cliente?.nome ?? lancamento.fornecedor?.nome ?? "-";
   const totalRetencoes = lancamento.retencoes.reduce((acc, r) => acc + Number(r.valor), 0);
   const baixaAtiva = lancamento.baixas.find((b) => !b.estornada);
@@ -86,7 +94,8 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
   const podeExcluir = lancamento.status === "aberto" && lancamento.natureza === "prevista";
   const podeConfirmarPrevisao = lancamento.status === "aberto" && lancamento.natureza === "prevista";
   const podeDarBaixa = lancamento.status === "aberto" && lancamento.natureza === "real";
-  const mostrarAcoes = podeEditar || podeExcluir || podeConfirmarPrevisao || podeDarBaixa;
+  const podeCancelar = lancamento.status === "aberto";
+  const mostrarAcoes = podeEditar || podeExcluir || podeConfirmarPrevisao || podeDarBaixa || podeCancelar;
 
   return (
     <div className="space-y-6">
@@ -115,8 +124,22 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
           </>
         )}
         <div className="flex justify-between"><span className="text-muted-foreground">{lancamento.tipo === "receita" ? "Cliente" : "Fornecedor"}</span><span className="font-medium">{contraparte}</span></div>
+        {lancamento.grupoParcelamentoId && (
+          <div className="flex justify-between"><span className="text-muted-foreground">Parcela</span><span className="font-medium">{lancamento.numeroParcela} de {lancamento.totalParcelas}</span></div>
+        )}
         <div className="flex justify-between"><span className="text-muted-foreground">Emissão</span><span className="font-medium">{formatarData(lancamento.dataEmissao)}</span></div>
         <div className="flex justify-between"><span className="text-muted-foreground">Vencimento</span><span className="font-medium">{formatarData(lancamento.dataVencimento)}</span></div>
+        {podeEditar ? (
+          <DataPrevisaoForm
+            action={atualizarDataPrevisao.bind(null, id)}
+            dataPrevisaoISO={lancamento.dataPrevisao.toISOString().slice(0, 10)}
+          />
+        ) : (
+          <div className="flex justify-between"><span className="text-muted-foreground">Data de Previsão</span><span className="font-medium">{formatarData(lancamento.dataPrevisao)}</span></div>
+        )}
+        {lancamento.status === "cancelado" && lancamento.motivoCancelamento && (
+          <div className="flex justify-between"><span className="text-muted-foreground">Motivo do Cancelamento</span><span className="font-medium">{lancamento.motivoCancelamento}</span></div>
+        )}
         <div className="flex justify-between"><span className="text-muted-foreground">Processo</span><span className="font-medium">{lancamento.processo.nome}</span></div>
         <div className="flex justify-between"><span className="text-muted-foreground">Tipo de Documento</span><span className="font-medium">{TIPOS_DOCUMENTO_LABEL[lancamento.tipoDocumento] ?? lancamento.tipoDocumento}</span></div>
         <div className="flex justify-between"><span className="text-muted-foreground">Documento</span><span className="font-medium">{lancamento.documento ?? "-"}</span></div>
@@ -397,6 +420,14 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
           )}
           {podeExcluir && <ExcluirLancamentoButton action={excluirLancamentoFinanceiro.bind(null, id)} />}
           {podeConfirmarPrevisao && <ConfirmarPrevisaoButton action={confirmarPrevisao.bind(null, id)} />}
+          {podeCancelar && (
+            <CancelarLancamentoButton
+              action={cancelarLancamentoFinanceiro.bind(null, id)}
+              numeroParcela={lancamento.numeroParcela}
+              totalParcelas={lancamento.totalParcelas}
+              totalAbertoNoGrupo={totalAbertoNoGrupo}
+            />
+          )}
           {podeDarBaixa && (
             <Button size="sm" render={<Link href={`/lancamentos-financeiros/${id}/baixa`} />}>
               Dar Baixa

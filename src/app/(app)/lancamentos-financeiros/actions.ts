@@ -15,6 +15,7 @@ import {
   obterUltimoFechamentoAtivo,
 } from "@/lib/financeiro-ledger";
 import { erroContaParaBaixa } from "@/lib/regras-conta-baixa";
+import { adicionarMesesUTC } from "@/lib/lancamento-recorrente";
 
 export type LancamentoFinanceiroFormState = { erro?: string };
 export type BaixaFormState = { erro?: string };
@@ -106,7 +107,10 @@ const lancamentoSchema = z.object({
   valorOriginal: z.coerce.number().positive("Valor deve ser maior que zero."),
   dataEmissao: z.coerce.date({ message: "Informe a data de emissão." }),
   dataVencimento: z.coerce.date({ message: "Informe a data de vencimento." }),
+  dataPrevisao: z.coerce.date({ message: "Informe a data de previsão." }),
   moraMes: z.coerce.number().nonnegative("Mora não pode ser negativa.").optional(),
+  parcelado: z.enum(["on"]).nullish(),
+  numeroParcelas: z.coerce.number().int().min(2, "Mínimo de 2 parcelas.").optional(),
   processoId: z.string().min(1, "Selecione o processo."),
   observacao: z.string().trim().transform(normalizarTexto).optional(),
   rateioPlano: parseJsonArray(rateioPlanoLinhaSchema, { min: 1, label: "Rateio de Plano Financeiro" }),
@@ -129,6 +133,9 @@ const lancamentoSchema = z.object({
 }).refine((dados) => dados.dataVencimento >= dados.dataEmissao, {
   message: "Vencimento não pode ser anterior à emissão.",
   path: ["dataVencimento"],
+}).refine((dados) => dados.parcelado !== "on" || (dados.numeroParcelas ?? 0) >= 2, {
+  message: "Informe o número de parcelas (mínimo 2).",
+  path: ["numeroParcelas"],
 });
 
 export type DadosLancamento = z.infer<typeof lancamentoSchema>;
@@ -149,7 +156,10 @@ function lerFormData(formData: FormData) {
     valorOriginal: formData.get("valorOriginal"),
     dataEmissao: formData.get("dataEmissao"),
     dataVencimento: formData.get("dataVencimento"),
+    dataPrevisao: formData.get("dataPrevisao"),
     moraMes: formData.get("moraMes") || undefined,
+    parcelado: formData.get("parcelado"),
+    numeroParcelas: formData.get("numeroParcelas") || undefined,
     processoId: formData.get("processoId"),
     observacao: formData.get("observacao"),
     rateioPlano: formData.get("rateioPlano"),
@@ -170,6 +180,19 @@ function lerFormData(formData: FormData) {
     cartaoNumeroAutorizacao: formData.get("cartaoNumeroAutorizacao"),
     cartaoTipoTaxa: formData.get("cartaoTipoTaxa") || undefined,
   });
+}
+
+/** Aplica os percentuais de rateio (Plano×Centro de Custo e Processo) sobre um valor — extraído pra ser reusado por parcela no Parcelamento, que precisa do rateio recalculado sobre o valor de CADA parcela, nunca sobre o valor total do título. */
+function distribuirRateios(dados: DadosLancamento, valor: Prisma.Decimal) {
+  const rateioPlanoDistribuido = distribuirValor(
+    valor,
+    dados.rateioPlano.map((l) => ({ ...l, percentual: new Prisma.Decimal(l.percentual) }))
+  );
+  const rateioProcessoDistribuido = distribuirValor(
+    valor,
+    dados.rateioProcesso.map((l) => ({ ...l, percentual: new Prisma.Decimal(l.percentual) }))
+  );
+  return { rateioPlanoDistribuido, rateioProcessoDistribuido };
 }
 
 /**
@@ -278,14 +301,7 @@ async function validarRegrasDeNegocio(dados: DadosLancamento, ctx: { empresaId: 
   }
 
   const valorOriginal = new Prisma.Decimal(dados.valorOriginal);
-  const rateioPlanoDistribuido = distribuirValor(
-    valorOriginal,
-    dados.rateioPlano.map((l) => ({ ...l, percentual: new Prisma.Decimal(l.percentual) }))
-  );
-  const rateioProcessoDistribuido = distribuirValor(
-    valorOriginal,
-    dados.rateioProcesso.map((l) => ({ ...l, percentual: new Prisma.Decimal(l.percentual) }))
-  );
+  const { rateioPlanoDistribuido, rateioProcessoDistribuido } = distribuirRateios(dados, valorOriginal);
 
   return { valorOriginal, rateioPlanoDistribuido, rateioProcessoDistribuido, percentualAplicado } as const;
 }
@@ -311,6 +327,7 @@ function montarDadosPersistencia(dados: DadosLancamento, valores: ValidacaoOk) {
     valorOriginal,
     dataEmissao: dados.dataEmissao,
     dataVencimento: dados.dataVencimento,
+    dataPrevisao: dados.dataPrevisao,
     moraMes: dados.moraMes !== undefined ? new Prisma.Decimal(dados.moraMes) : null,
     processoId: dados.processoId,
     observacao: dados.observacao || null,
@@ -426,6 +443,64 @@ export async function criarLancamentoFinanceiroDeDados(
   }
 }
 
+/**
+ * Gera N Lançamentos Financeiros de uma vez (mesmo fornecedor/cliente, rateio,
+ * processo etc. — só valor/vencimento/previsão variam), todos no mesmo
+ * `grupoParcelamentoId`. Valor total dividido em partes iguais com o resíduo
+ * de arredondamento concentrado na ÚLTIMA parcela (nunca perde/sobra
+ * centavo); vencimento e previsão avançam um mês por parcela a partir do que
+ * foi digitado pra 1ª (`adicionarMesesUTC`, clampado pro último dia real do
+ * mês quando necessário). Uma única transação — tudo ou nada.
+ */
+async function criarLancamentoFinanceiroParcelado(
+  dados: DadosLancamento,
+  quantidadeParcelas: number,
+  ctx: { empresaId: string; grupoId: string; criadoPorId?: string }
+): Promise<{ primeiroLancamentoId: string } | { erro: string }> {
+  const validado = await validarRegrasDeNegocio(dados, ctx);
+  if ("erro" in validado) return { erro: (validado as { erro: string }).erro };
+
+  const ultimoFechamento = await obterUltimoFechamentoAtivo(db, ctx.empresaId);
+  const dataMovimento = ultimoFechamento?.data ?? new Date();
+
+  const valorParcela = validado.valorOriginal.dividedBy(quantidadeParcelas).toDecimalPlaces(2);
+  const diferenca = validado.valorOriginal.minus(valorParcela.times(quantidadeParcelas));
+
+  const grupoParcelamentoId = crypto.randomUUID();
+
+  try {
+    const idsCriados = await db.$transaction(async (tx) => {
+      const ids: string[] = [];
+      for (let numero = 1; numero <= quantidadeParcelas; numero += 1) {
+        const valorDestaParcela = numero === quantidadeParcelas ? valorParcela.plus(diferenca) : valorParcela;
+        const valoresDaParcela: ValidacaoOk = {
+          ...validado,
+          valorOriginal: valorDestaParcela,
+          ...distribuirRateios(dados, valorDestaParcela),
+        };
+        const lancamento = await tx.lancamentoFinanceiro.create({
+          data: {
+            empresaId: ctx.empresaId,
+            dataMovimento,
+            criadoPorId: ctx.criadoPorId,
+            ...montarDadosPersistencia(dados, valoresDaParcela),
+            dataVencimento: adicionarMesesUTC(dados.dataVencimento, numero - 1),
+            dataPrevisao: adicionarMesesUTC(dados.dataPrevisao, numero - 1),
+            grupoParcelamentoId,
+            numeroParcela: numero,
+            totalParcelas: quantidadeParcelas,
+          },
+        });
+        ids.push(lancamento.id);
+      }
+      return ids;
+    });
+    return { primeiroLancamentoId: idsCriados[0] };
+  } catch {
+    return { erro: "Não foi possível salvar o lançamento parcelado." };
+  }
+}
+
 export async function criarLancamentoFinanceiro(
   _prev: LancamentoFinanceiroFormState,
   formData: FormData
@@ -437,8 +512,21 @@ export async function criarLancamentoFinanceiro(
 
   const parsed = lerFormData(formData);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  const dados = parsed.data;
 
-  const resultado = await criarLancamentoFinanceiroDeDados(parsed.data, {
+  if (dados.parcelado === "on" && dados.numeroParcelas) {
+    const resultado = await criarLancamentoFinanceiroParcelado(dados, dados.numeroParcelas, {
+      empresaId,
+      grupoId,
+      criadoPorId: permissao.session.user.id,
+    });
+    if ("erro" in resultado) return resultado;
+
+    revalidatePath("/lancamentos-financeiros");
+    redirect(`/lancamentos-financeiros/${resultado.primeiroLancamentoId}`);
+  }
+
+  const resultado = await criarLancamentoFinanceiroDeDados(dados, {
     empresaId,
     grupoId,
     criadoPorId: permissao.session.user.id,
@@ -533,6 +621,43 @@ export async function confirmarPrevisao(
   return {};
 }
 
+const dataPrevisaoSchema = z.object({ dataPrevisao: z.coerce.date({ message: "Informe a data de previsão." }) });
+
+/**
+ * Edita só a Data de Previsão — deliberadamente FORA da trava de Fechamento
+ * Diário que vale para dataEmissao/dataVencimento/valor (nunca chama
+ * `validarDataDeMovimento`/`obterUltimoFechamentoAtivo` aqui): é só um
+ * apontamento de expectativa de pagamento/recebimento, editável livremente
+ * enquanto o título está `aberto`, e travada assim que sai desse status
+ * (baixado, estornado, renegociado, cancelado).
+ */
+export async function atualizarDataPrevisao(
+  lancamentoId: string,
+  _prev: LancamentoFinanceiroFormState,
+  formData: FormData
+): Promise<LancamentoFinanceiroFormState> {
+  const permissao = await exigirPermissao();
+  if ("erro" in permissao) return permissao;
+  const empresaId = permissao.session.user.empresaId!;
+
+  const parsed = dataPrevisaoSchema.safeParse({ dataPrevisao: formData.get("dataPrevisao") });
+  if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Data inválida." };
+
+  const lancamento = await db.lancamentoFinanceiro.findFirst({ where: { id: lancamentoId, empresaId } });
+  if (!lancamento) return { erro: "Lançamento não encontrado." };
+  if (lancamento.status !== "aberto") {
+    return { erro: "Não é possível alterar a data de previsão de um título que já foi baixado, estornado, renegociado ou cancelado." };
+  }
+
+  await db.lancamentoFinanceiro.update({
+    where: { id: lancamentoId },
+    data: { dataPrevisao: parsed.data.dataPrevisao },
+  });
+
+  revalidatePath(`/lancamentos-financeiros/${lancamentoId}`);
+  return {};
+}
+
 /**
  * Exclui um Lançamento Financeiro — só permitido pra uma `prevista` em aberto
  * (nunca teve Baixa, então não há ledger nem saldo de conta a desfazer). Um
@@ -571,6 +696,60 @@ export async function excluirLancamentoFinanceiro(
 
   revalidatePath("/lancamentos-financeiros");
   redirect("/lancamentos-financeiros");
+}
+
+const cancelarSchema = z.object({
+  escopo: z.enum(["apenas_esta", "todas_pendentes"]),
+  motivo: z.string().trim().min(1, "Informe o motivo do cancelamento."),
+});
+
+/**
+ * Cancela um Lançamento Financeiro — NUNCA um DELETE físico, sempre
+ * `status: aberto -> cancelado` (histórico/auditoria preservados). Só
+ * permitido a partir de `aberto`: um título já baixado se reverte por
+ * Estorno, não por cancelamento. Quando o título pertence a um grupo de
+ * parcelamento, `escopo: "todas_pendentes"` cancela em lote todas as
+ * parcelas do mesmo grupo que ainda estão `aberto` — nunca mexe em parcelas
+ * já baixadas/estornadas do mesmo grupo.
+ */
+export async function cancelarLancamentoFinanceiro(
+  lancamentoId: string,
+  _prev: LancamentoFinanceiroFormState,
+  formData: FormData
+): Promise<LancamentoFinanceiroFormState> {
+  const permissao = await exigirPermissao();
+  if ("erro" in permissao) return permissao;
+  const empresaId = permissao.session.user.empresaId!;
+
+  const parsed = cancelarSchema.safeParse({ escopo: formData.get("escopo"), motivo: formData.get("motivo") });
+  if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  const { escopo, motivo } = parsed.data;
+
+  const lancamento = await db.lancamentoFinanceiro.findFirst({ where: { id: lancamentoId, empresaId } });
+  if (!lancamento) return { erro: "Lançamento não encontrado." };
+  if (lancamento.status !== "aberto") {
+    return { erro: "Só é possível cancelar um título com status aberto. Para reverter um título já baixado, use o Estorno." };
+  }
+
+  const dadosCancelamento = {
+    status: "cancelado" as const,
+    motivoCancelamento: motivo,
+    canceladoEm: new Date(),
+    canceladoPorId: permissao.session.user.id,
+  };
+
+  if (escopo === "apenas_esta" || !lancamento.grupoParcelamentoId) {
+    await db.lancamentoFinanceiro.update({ where: { id: lancamentoId }, data: dadosCancelamento });
+  } else {
+    await db.lancamentoFinanceiro.updateMany({
+      where: { grupoParcelamentoId: lancamento.grupoParcelamentoId, status: "aberto", empresaId },
+      data: dadosCancelamento,
+    });
+  }
+
+  revalidatePath("/lancamentos-financeiros");
+  revalidatePath(`/lancamentos-financeiros/${lancamentoId}`);
+  return {};
 }
 
 const baixaSchema = z.object({

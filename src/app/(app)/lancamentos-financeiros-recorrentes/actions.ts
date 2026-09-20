@@ -292,6 +292,9 @@ async function montarDadosLancamentoDoRecorrente(
     valorOriginal: valor,
     dataEmissao: proximaOcorrencia,
     dataVencimento: proximaOcorrencia,
+    // Sem input de usuário aqui (geração automática) — mesma suposição seguida
+    // no backfill de dataPrevisao: igual ao vencimento, ajustável depois.
+    dataPrevisao: proximaOcorrencia,
     moraMes: undefined,
     processoId: recorrente.processoId,
     observacao: `Gerado automaticamente do recorrente "${recorrente.descricao}".`,

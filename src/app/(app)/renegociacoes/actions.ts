@@ -322,6 +322,9 @@ export async function fecharRenegociacao(id: string): Promise<RenegociacaoFormSt
             valorOriginal: valorDestino,
             dataEmissao: destino.dataEmissao,
             dataVencimento: destino.dataVencimento,
+            // Renegociação não tem campo próprio pra isso — mesma suposição
+            // do backfill: igual ao vencimento, ajustável depois pelo usuário.
+            dataPrevisao: destino.dataVencimento,
             processoId: destino.processoId,
             observacao: `Gerado por renegociação — ${renegociacao.motivo}`,
             rateios: {

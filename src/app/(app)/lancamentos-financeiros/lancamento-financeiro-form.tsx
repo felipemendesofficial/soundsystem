@@ -54,6 +54,7 @@ type CamposTexto = {
   moraMes: string;
   dataEmissao: string;
   dataVencimento: string;
+  dataPrevisao: string;
   observacao: string;
   chequeBanco: string;
   chequeAgencia: string;
@@ -91,6 +92,7 @@ const camposTextoVazios: CamposTexto = {
   moraMes: "",
   dataEmissao: "",
   dataVencimento: "",
+  dataPrevisao: "",
   observacao: "",
   chequeBanco: "",
   chequeAgencia: "",
@@ -121,6 +123,7 @@ export type LancamentoFinanceiroDefaultValues = {
   moraMes: string;
   dataEmissao: string;
   dataVencimento: string;
+  dataPrevisao: string;
   processoId: string;
   observacao: string;
   rateioPlano: { planoId: string; percentual: string; centroCusto: { centroCustoId: string; percentual: string }[] }[];
@@ -184,9 +187,12 @@ export function LancamentoFinanceiroForm({
   defaultValues?: LancamentoFinanceiroDefaultValues;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
+  const editando = defaultValues !== undefined;
 
   const processoIdInicial = defaultValues?.processoId ?? processoPadraoId ?? "";
 
+  const [parcelado, setParcelado] = useState(false);
+  const [numeroParcelas, setNumeroParcelas] = useState("2");
   const [tipo, setTipo] = useState<"receita" | "despesa">(defaultValues?.tipo ?? "despesa");
   const [natureza, setNatureza] = useState<"real" | "prevista">(defaultValues?.natureza ?? "real");
   const [tipoDocumento, setTipoDocumento] = useState<string>(defaultValues?.tipoDocumento ?? "especie");
@@ -228,6 +234,7 @@ export function LancamentoFinanceiroForm({
     moraMes: defaultValues?.moraMes ?? camposTextoVazios.moraMes,
     dataEmissao: defaultValues?.dataEmissao ?? hojeISO(),
     dataVencimento: defaultValues?.dataVencimento ?? camposTextoVazios.dataVencimento,
+    dataPrevisao: defaultValues?.dataPrevisao ?? camposTextoVazios.dataPrevisao,
     observacao: defaultValues?.observacao ?? camposTextoVazios.observacao,
     chequeBanco: defaultValues?.chequeBanco ?? camposTextoVazios.chequeBanco,
     chequeAgencia: defaultValues?.chequeAgencia ?? camposTextoVazios.chequeAgencia,
@@ -506,7 +513,7 @@ export function LancamentoFinanceiroForm({
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
-            <Label htmlFor="valorOriginal" className={labelClass}>Valor (R$)</Label>
+            <Label htmlFor="valorOriginal" className={labelClass}>{parcelado ? "Valor Total (R$)" : "Valor (R$)"}</Label>
             <Input id="valorOriginal" name="valorOriginal" type="number" step="0.01" min="0.01" required className={inputClass} {...campoTexto("valorOriginal")} />
           </div>
           <div className="space-y-2">
@@ -521,7 +528,7 @@ export function LancamentoFinanceiroForm({
             <Input id="dataEmissao" name="dataEmissao" type="date" required className={inputClass} {...campoTexto("dataEmissao")} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="dataVencimento" className={labelClass}>Vencimento</Label>
+            <Label htmlFor="dataVencimento" className={labelClass}>{parcelado ? "Vencimento (1ª parcela)" : "Vencimento"}</Label>
             <Input
               id="dataVencimento"
               name="dataVencimento"
@@ -533,6 +540,45 @@ export function LancamentoFinanceiroForm({
             />
           </div>
         </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="dataPrevisao" className={labelClass}>
+            {parcelado ? "Data de Previsão (1ª parcela)" : "Data de Previsão (pagamento/recebimento real)"}
+          </Label>
+          <Input id="dataPrevisao" name="dataPrevisao" type="date" required className={inputClass} {...campoTexto("dataPrevisao")} />
+          <p className="text-xs text-muted-foreground">
+            Quando o título deve ser efetivamente pago/recebido na prática — pode ser diferente do vencimento.
+          </p>
+        </div>
+
+        {!editando && (
+          <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+            <div className="flex items-center gap-2">
+              <Checkbox id="parcelado" name="parcelado" checked={parcelado} onCheckedChange={setParcelado} />
+              <Label htmlFor="parcelado" className={labelClass}>Parcelado?</Label>
+            </div>
+            {parcelado && (
+              <div className="space-y-2 pt-1">
+                <Label htmlFor="numeroParcelas" className={labelClass}>Número de Parcelas</Label>
+                <Input
+                  id="numeroParcelas"
+                  name="numeroParcelas"
+                  type="number"
+                  step="1"
+                  min="2"
+                  required
+                  value={numeroParcelas}
+                  onChange={(e) => setNumeroParcelas(e.target.value)}
+                  className={inputClass}
+                />
+                <p className="text-xs text-muted-foreground">
+                  O valor total é dividido em parcelas iguais (ajuste de centavos concentrado na última). Vencimento e
+                  previsão de cada parcela avançam um mês a partir do que foi informado acima.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label htmlFor="processoIdSelect" className={labelClass}>Processo</Label>
