@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { TIPOS_CARTAO_MODALIDADE_LABEL } from "@/lib/financeiro-labels";
 
 /**
  * Dados de referência (combos) compartilhados entre "novo" e "editar" — junto
@@ -6,8 +7,19 @@ import { db } from "@/lib/db";
  * uma opção cadastrada (padrão explícito de Processo continua tendo prioridade).
  */
 export async function obterDadosFormularioLancamento(grupoId: string, empresaId: string) {
-  const [clientes, fornecedores, portadores, contasFinanceiras, processos, planoFinanceiro, centroCusto, processoItens, vendedores, operadorasCartao] =
-    await Promise.all([
+  const [
+    clientes,
+    fornecedores,
+    portadores,
+    contasFinanceiras,
+    processos,
+    planoFinanceiro,
+    centroCusto,
+    processoItens,
+    vendedores,
+    operadorasCartao,
+    taxasCartao,
+  ] = await Promise.all([
       db.cliente.findMany({ where: { grupoId }, orderBy: { nome: "asc" } }),
       db.fornecedor.findMany({ where: { grupoId }, orderBy: { nome: "asc" } }),
       db.portador.findMany({ where: { empresaId, ativo: true }, orderBy: { nome: "asc" } }),
@@ -21,6 +33,11 @@ export async function obterDadosFormularioLancamento(grupoId: string, empresaId:
       }),
       db.vendedor.findMany({ where: { grupoId, ativo: true }, orderBy: { nome: "asc" } }),
       db.operadoraCartao.findMany({ where: { empresaId, ativo: true }, orderBy: { descricao: "asc" } }),
+      db.operadoraCartaoTaxa.findMany({
+        where: { operadora: { empresaId, ativo: true }, ativo: true },
+        include: { bandeira: true },
+        orderBy: [{ bandeira: { nome: "asc" } }, { modalidade: "asc" }],
+      }),
     ]);
 
   const processoPadrao = processos.find((p) => p.padrao) ?? (processos.length === 1 ? processos[0] : undefined);
@@ -50,5 +67,14 @@ export async function obterDadosFormularioLancamento(grupoId: string, empresaId:
     processoItens: processoItens.map((i) => ({ id: i.id, label: `${i.codigo} — ${i.descricao}`, processoId: i.processoId })),
     vendedores: vendedores.map((v) => ({ id: v.id, label: v.nome })),
     operadorasCartao: operadorasCartao.map((o) => ({ id: o.id, label: o.descricao })),
+    taxasCartao: taxasCartao.map((t) => ({
+      id: t.id,
+      operadoraId: t.operadoraId,
+      label: `${t.bandeira.nome} — ${TIPOS_CARTAO_MODALIDADE_LABEL[t.modalidade] ?? t.modalidade}`,
+      taxaAvista: t.taxaAvista.toString(),
+      taxaAntecipacao: t.taxaAntecipacao.toString(),
+      taxaParcEstabelecimento: t.taxaParcEstabelecimento.toString(),
+      taxaParcCliente: t.taxaParcCliente.toString(),
+    })),
   };
 }

@@ -922,8 +922,9 @@ model OperadoraCartaoTaxa {
   tipoRepasse             TipoRepasse          @map("tipo_repasse")
   ativo                   Boolean              @default(true)
 
-  operadora OperadoraCartao @relation(fields: [operadoraId], references: [id])
-  bandeira  Bandeira        @relation(fields: [bandeiraId], references: [id])
+  operadora   OperadoraCartao @relation(fields: [operadoraId], references: [id])
+  bandeira    Bandeira        @relation(fields: [bandeiraId], references: [id])
+  dadosCartao DadosCartao[]
 
   @@unique([operadoraId, bandeiraId, modalidade])
   @@map("operadora_cartao_taxas")
@@ -1399,12 +1400,18 @@ model DadosCartao {
   id                    String          @id @default(uuid())
   lancamentoId          String          @unique @map("lancamento_id")
   operadoraId           String?         @map("operadora_id")
+  operadoraCartaoTaxaId String?         @map("operadora_cartao_taxa_id")
+  // Snapshot do percentual (dentre os 4 de OperadoraCartaoTaxa, conforme
+  // `tipoTaxa`) vigente no momento do lançamento — nunca recalculado depois,
+  // pra uma mudança futura na Taxa não alterar lançamentos já registrados.
+  percentualAplicado    Decimal?        @map("percentual_aplicado") @db.Decimal(5, 2)
   numeroCartao          String?         @map("numero_cartao")
   numeroAutorizacao     String?         @map("numero_autorizacao")
   tipoTaxa              TipoTaxaCartao? @map("tipo_taxa")
 
-  lancamento LancamentoFinanceiro @relation(fields: [lancamentoId], references: [id])
-  operadora  OperadoraCartao?     @relation(fields: [operadoraId], references: [id])
+  lancamento          LancamentoFinanceiro @relation(fields: [lancamentoId], references: [id])
+  operadora           OperadoraCartao?     @relation(fields: [operadoraId], references: [id])
+  operadoraCartaoTaxa OperadoraCartaoTaxa? @relation(fields: [operadoraCartaoTaxaId], references: [id])
 
   @@map("dados_cartao")
 }

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmarPrevisaoButton } from "@/components/confirmar-previsao-button";
 import { ExcluirLancamentoButton } from "@/components/excluir-lancamento-button";
-import { TIPOS_DOCUMENTO_LABEL, TIPOS_TAXA_CARTAO_LABEL } from "@/lib/financeiro-labels";
+import { TIPOS_DOCUMENTO_LABEL, TIPOS_TAXA_CARTAO_LABEL, TIPOS_CARTAO_MODALIDADE_LABEL } from "@/lib/financeiro-labels";
 import { confirmarPrevisao, excluirLancamentoFinanceiro } from "../actions";
 
 function formatarMoeda(valor: unknown) {
@@ -43,7 +43,7 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
       contaPrevista: true,
       processo: true,
       dadosCheque: true,
-      dadosCartao: { include: { operadora: true } },
+      dadosCartao: { include: { operadora: true, operadoraCartaoTaxa: { include: { bandeira: true } } } },
       criadoPor: true,
       atualizadoPor: true,
       rateios: { include: { plano: true, rateiosCentroCusto: { include: { centroCusto: true } } } },
@@ -140,6 +140,14 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
         <div className="space-y-1 rounded-lg border border-border bg-card p-4 text-sm">
           <h2 className="mb-1 text-base font-semibold">Dados do Cartão</h2>
           <div className="flex justify-between"><span className="text-muted-foreground">Operadora</span><span className="font-medium">{lancamento.dadosCartao.operadora?.descricao ?? "-"}</span></div>
+          {lancamento.dadosCartao.operadoraCartaoTaxa && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Bandeira/Modalidade</span>
+              <span className="font-medium">
+                {lancamento.dadosCartao.operadoraCartaoTaxa.bandeira.nome} — {TIPOS_CARTAO_MODALIDADE_LABEL[lancamento.dadosCartao.operadoraCartaoTaxa.modalidade] ?? lancamento.dadosCartao.operadoraCartaoTaxa.modalidade}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between"><span className="text-muted-foreground">Número do Cartão</span><span className="font-medium">{lancamento.dadosCartao.numeroCartao ?? "-"}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Número de Autorização</span><span className="font-medium">{lancamento.dadosCartao.numeroAutorizacao ?? "-"}</span></div>
           <div className="flex justify-between">
@@ -148,6 +156,12 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
               {lancamento.dadosCartao.tipoTaxa ? (TIPOS_TAXA_CARTAO_LABEL[lancamento.dadosCartao.tipoTaxa] ?? lancamento.dadosCartao.tipoTaxa) : "-"}
             </span>
           </div>
+          {lancamento.dadosCartao.percentualAplicado !== null && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Percentual Aplicado</span>
+              <span className="font-medium">{Number(lancamento.dadosCartao.percentualAplicado).toLocaleString("pt-BR")}%</span>
+            </div>
+          )}
         </div>
       )}
 

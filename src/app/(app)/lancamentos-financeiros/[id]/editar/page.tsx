@@ -74,6 +74,7 @@ export default async function EditarLancamentoFinanceiroPage({ params }: { param
     chequeTelefone: lancamento.dadosCheque?.telefone ?? "",
     chequeTerceiro: lancamento.dadosCheque?.terceiro ?? "",
     cartaoOperadoraId: lancamento.dadosCartao?.operadoraId ?? null,
+    cartaoOperadoraCartaoTaxaId: lancamento.dadosCartao?.operadoraCartaoTaxaId ?? null,
     cartaoNumeroCartao: lancamento.dadosCartao?.numeroCartao ?? "",
     cartaoNumeroAutorizacao: lancamento.dadosCartao?.numeroAutorizacao ?? "",
     cartaoTipoTaxa: lancamento.dadosCartao?.tipoTaxa ?? "",

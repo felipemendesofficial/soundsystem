@@ -136,6 +136,7 @@ export type LancamentoFinanceiroDefaultValues = {
   chequeTelefone: string;
   chequeTerceiro: string;
   cartaoOperadoraId: string | null;
+  cartaoOperadoraCartaoTaxaId: string | null;
   cartaoNumeroCartao: string;
   cartaoNumeroAutorizacao: string;
   cartaoTipoTaxa: string;
@@ -155,6 +156,7 @@ export function LancamentoFinanceiroForm({
   processoItens,
   vendedores,
   operadorasCartao,
+  taxasCartao,
   defaultValues,
 }: {
   action: Action;
@@ -170,6 +172,15 @@ export function LancamentoFinanceiroForm({
   processoItens: { id: string; label: string; processoId: string }[];
   vendedores: ItemRateio[];
   operadorasCartao: ItemRateio[];
+  taxasCartao: {
+    id: string;
+    operadoraId: string;
+    label: string;
+    taxaAvista: string;
+    taxaAntecipacao: string;
+    taxaParcEstabelecimento: string;
+    taxaParcCliente: string;
+  }[];
   defaultValues?: LancamentoFinanceiroDefaultValues;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
@@ -187,6 +198,9 @@ export function LancamentoFinanceiroForm({
   const [documentoFisico, setDocumentoFisico] = useState(defaultValues?.documentoFisico ?? false);
   const [cartaoTipoTaxa, setCartaoTipoTaxa] = useState<string>(defaultValues?.cartaoTipoTaxa ?? "");
   const [cartaoOperadoraId, setCartaoOperadoraId] = useState<string | null>(defaultValues?.cartaoOperadoraId ?? null);
+  const [cartaoOperadoraCartaoTaxaId, setCartaoOperadoraCartaoTaxaId] = useState<string | null>(
+    defaultValues?.cartaoOperadoraCartaoTaxaId ?? null
+  );
 
   function selecionarTipoDocumento(novoTipo: string) {
     setTipoDocumento((atual) => {
@@ -200,6 +214,7 @@ export function LancamentoFinanceiroForm({
         setCampos((c) => ({ ...c, ...Object.fromEntries(CAMPOS_CARTAO.map((campo) => [campo, ""])) }));
         setCartaoTipoTaxa("");
         setCartaoOperadoraId(null);
+        setCartaoOperadoraCartaoTaxaId(null);
       }
       return novoTipo;
     });
@@ -287,6 +302,20 @@ export function LancamentoFinanceiroForm({
   );
   const itensContas = Object.fromEntries(contasFinanceirasFiltradas.map((c) => [c.id, c.label]));
 
+  const taxasCartaoFiltradas = useMemo(
+    () => taxasCartao.filter((t) => t.operadoraId === cartaoOperadoraId),
+    [taxasCartao, cartaoOperadoraId]
+  );
+  const taxaCartaoSelecionada = taxasCartaoFiltradas.find((t) => t.id === cartaoOperadoraCartaoTaxaId) ?? null;
+  const percentualPorTipoTaxa: Record<string, string> = taxaCartaoSelecionada
+    ? {
+        a_vista: taxaCartaoSelecionada.taxaAvista,
+        antecipacao: taxaCartaoSelecionada.taxaAntecipacao,
+        parc_estabelecimento: taxaCartaoSelecionada.taxaParcEstabelecimento,
+        parc_cliente: taxaCartaoSelecionada.taxaParcCliente,
+      }
+    : {};
+
   const planoFinanceiroFiltrado = useMemo(
     () => planoFinanceiro.filter((p) => p.tipo === tipo).map((p) => ({ id: p.id, label: p.label })),
     [planoFinanceiro, tipo]
@@ -365,6 +394,7 @@ export function LancamentoFinanceiroForm({
         <input type="hidden" name="contaPrevistaId" value={contaPrevistaId ?? ""} />
         <input type="hidden" name="cartaoTipoTaxa" value={cartaoTipoTaxa} />
         <input type="hidden" name="cartaoOperadoraId" value={cartaoOperadoraId ?? ""} />
+        <input type="hidden" name="cartaoOperadoraCartaoTaxaId" value={cartaoOperadoraCartaoTaxaId ?? ""} />
         <input type="hidden" name="rateioPlano" value={rateioPlanoSerializado} />
         <input type="hidden" name="rateioProcesso" value={rateioProcessoSerializado} />
         <input type="hidden" name="retencoes" value={retencoesSerializadas} />
@@ -590,7 +620,10 @@ export function LancamentoFinanceiroForm({
             <Combobox
               items={operadorasCartao}
               value={operadorasCartao.find((o) => o.id === cartaoOperadoraId) ?? null}
-              onValueChange={(item: ItemRateio | null) => setCartaoOperadoraId(item?.id ?? null)}
+              onValueChange={(item: ItemRateio | null) => {
+                setCartaoOperadoraId(item?.id ?? null);
+                setCartaoOperadoraCartaoTaxaId(null);
+              }}
               itemToStringLabel={(item: ItemRateio) => item.label}
               itemToStringValue={(item: ItemRateio) => item.id}
             >
@@ -609,6 +642,27 @@ export function LancamentoFinanceiroForm({
                 </ComboboxList>
               </ComboboxContent>
             </Combobox>
+
+            {cartaoOperadoraId && (
+              <div className="space-y-1">
+                <Label className="text-xs">Taxa (bandeira/modalidade)</Label>
+                <Select
+                  value={cartaoOperadoraCartaoTaxaId ?? ""}
+                  items={Object.fromEntries(taxasCartaoFiltradas.map((t) => [t.id, t.label]))}
+                  onValueChange={(v) => setCartaoOperadoraCartaoTaxaId(v || null)}
+                >
+                  <SelectTrigger className="h-10 w-full bg-background">
+                    <SelectValue placeholder={taxasCartaoFiltradas.length === 0 ? "Nenhuma taxa cadastrada" : "Nenhuma"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {taxasCartaoFiltradas.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <Input name="cartaoNumeroCartao" placeholder="Número do Cartão" className="h-10 bg-background" {...campoTexto("cartaoNumeroCartao")} />
             <Input name="cartaoNumeroAutorizacao" placeholder="Número de Autorização" className="h-10 bg-background" {...campoTexto("cartaoNumeroAutorizacao")} />
             <div className="space-y-1">
@@ -623,6 +677,11 @@ export function LancamentoFinanceiroForm({
                   ))}
                 </SelectContent>
               </Select>
+              {cartaoTipoTaxa && percentualPorTipoTaxa[cartaoTipoTaxa] !== undefined && (
+                <p className="text-xs text-muted-foreground">
+                  Percentual aplicado: {Number(percentualPorTipoTaxa[cartaoTipoTaxa]).toLocaleString("pt-BR")}%
+                </p>
+              )}
             </div>
           </div>
         )}

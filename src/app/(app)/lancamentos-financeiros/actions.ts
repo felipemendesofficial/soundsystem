@@ -122,6 +122,7 @@ const lancamentoSchema = z.object({
   chequeTelefone: z.string().trim().nullish(),
   chequeTerceiro: z.string().trim().nullish(),
   cartaoOperadoraId: z.string().trim().nullish(),
+  cartaoOperadoraCartaoTaxaId: z.string().trim().nullish(),
   cartaoNumeroCartao: z.string().trim().nullish(),
   cartaoNumeroAutorizacao: z.string().trim().nullish(),
   cartaoTipoTaxa: z.enum(["a_vista", "antecipacao", "parc_estabelecimento", "parc_cliente"]).optional(),
@@ -164,6 +165,7 @@ function lerFormData(formData: FormData) {
     chequeTelefone: formData.get("chequeTelefone"),
     chequeTerceiro: formData.get("chequeTerceiro"),
     cartaoOperadoraId: formData.get("cartaoOperadoraId"),
+    cartaoOperadoraCartaoTaxaId: formData.get("cartaoOperadoraCartaoTaxaId"),
     cartaoNumeroCartao: formData.get("cartaoNumeroCartao"),
     cartaoNumeroAutorizacao: formData.get("cartaoNumeroAutorizacao"),
     cartaoTipoTaxa: formData.get("cartaoTipoTaxa") || undefined,
@@ -193,9 +195,30 @@ async function validarRegrasDeNegocio(dados: DadosLancamento, ctx: { empresaId: 
     if (erroContaPrevista) return { erro: erroContaPrevista } as const;
   }
 
+  let percentualAplicado: Prisma.Decimal | null = null;
   if (dados.tipoDocumento === "cartao" && dados.cartaoOperadoraId) {
     const operadora = await db.operadoraCartao.findFirst({ where: { id: dados.cartaoOperadoraId, empresaId } });
     if (!operadora) return { erro: "Operadora de cartão não encontrada." } as const;
+
+    if (dados.cartaoOperadoraCartaoTaxaId) {
+      // Escopado por empresa via a relação com Operadora — mesma proteção
+      // cross-tenant já aplicada aos demais FKs escolhidos livremente pelo
+      // usuário (ver auditoria multi-tenant).
+      const taxa = await db.operadoraCartaoTaxa.findFirst({
+        where: { id: dados.cartaoOperadoraCartaoTaxaId, operadoraId: dados.cartaoOperadoraId, operadora: { empresaId } },
+      });
+      if (!taxa) return { erro: "Taxa de operadora não encontrada." } as const;
+
+      if (dados.cartaoTipoTaxa) {
+        const percentualPorTipo: Record<string, Prisma.Decimal> = {
+          a_vista: taxa.taxaAvista,
+          antecipacao: taxa.taxaAntecipacao,
+          parc_estabelecimento: taxa.taxaParcEstabelecimento,
+          parc_cliente: taxa.taxaParcCliente,
+        };
+        percentualAplicado = percentualPorTipo[dados.cartaoTipoTaxa] ?? null;
+      }
+    }
   }
 
   try {
@@ -264,7 +287,7 @@ async function validarRegrasDeNegocio(dados: DadosLancamento, ctx: { empresaId: 
     dados.rateioProcesso.map((l) => ({ ...l, percentual: new Prisma.Decimal(l.percentual) }))
   );
 
-  return { valorOriginal, rateioPlanoDistribuido, rateioProcessoDistribuido } as const;
+  return { valorOriginal, rateioPlanoDistribuido, rateioProcessoDistribuido, percentualAplicado } as const;
 }
 
 type ResultadoValidacao = Awaited<ReturnType<typeof validarRegrasDeNegocio>>;
@@ -357,6 +380,8 @@ function montarDadosPersistencia(dados: DadosLancamento, valores: ValidacaoOk) {
         ? {
             create: {
               operadoraId: dados.cartaoOperadoraId || null,
+              operadoraCartaoTaxaId: dados.cartaoOperadoraCartaoTaxaId || null,
+              percentualAplicado: valores.percentualAplicado,
               numeroCartao: dados.cartaoNumeroCartao || null,
               numeroAutorizacao: dados.cartaoNumeroAutorizacao || null,
               tipoTaxa: dados.cartaoTipoTaxa || null,
