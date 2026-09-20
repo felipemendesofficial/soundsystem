@@ -32,12 +32,12 @@ export async function mensagemSaldoInsuficiente(error: SaldoInsuficienteError): 
 
 type TipoMovimentoEntrada = Extract<
   TipoMovimento,
-  "compra" | "devolucao_cliente" | "ajuste_entrada"
+  "compra" | "devolucao_cliente" | "ajuste_entrada" | "op_entrada"
 >;
 
 type TipoMovimentoSaida = Extract<
   TipoMovimento,
-  "venda" | "devolucao_fornecedor" | "perda_avaria" | "uso_interno" | "ajuste_saida" | "os_saida"
+  "venda" | "devolucao_fornecedor" | "perda_avaria" | "uso_interno" | "ajuste_saida" | "os_saida" | "op_saida"
 >;
 
 type EstoqueTravado = {
@@ -152,6 +152,7 @@ export type RegistrarEntradaInput = {
   dataMovimento?: Date;
   orcamentoId?: string;
   lancamentoId?: string;
+  ordemProducaoId?: string;
 };
 
 /**
@@ -195,6 +196,7 @@ export async function registrarEntradaNaTransacao(
         observacao: input.observacao,
         orcamentoId: input.orcamentoId,
         lancamentoId: input.lancamentoId,
+        ordemProducaoId: input.ordemProducaoId,
       },
     });
   }
@@ -236,6 +238,7 @@ export async function registrarEntradaNaTransacao(
       observacao: input.observacao,
       orcamentoId: input.orcamentoId,
       lancamentoId: input.lancamentoId,
+      ordemProducaoId: input.ordemProducaoId,
     },
   });
 }
@@ -261,6 +264,7 @@ export type RegistrarSaidaInput = {
   dataMovimento?: Date;
   ordemServicoId?: string;
   lancamentoId?: string;
+  ordemProducaoId?: string;
 };
 
 /**
@@ -301,6 +305,7 @@ export async function registrarSaidaNaTransacao(
         observacao: input.observacao,
         ordemServicoId: input.ordemServicoId,
         lancamentoId: input.lancamentoId,
+        ordemProducaoId: input.ordemProducaoId,
       },
     });
   }
@@ -342,6 +347,7 @@ export async function registrarSaidaNaTransacao(
       observacao: input.observacao,
       ordemServicoId: input.ordemServicoId,
       lancamentoId: input.lancamentoId,
+      ordemProducaoId: input.ordemProducaoId,
     },
   });
 }
@@ -627,7 +633,7 @@ export class MovimentoJaEstornadoError extends Error {
   }
 }
 
-const TIPOS_ENTRADA_ESTORNAVEL = new Set<TipoMovimento>(["compra", "devolucao_cliente", "ajuste_entrada"]);
+const TIPOS_ENTRADA_ESTORNAVEL = new Set<TipoMovimento>(["compra", "devolucao_cliente", "ajuste_entrada", "op_entrada"]);
 const TIPOS_SAIDA_ESTORNAVEL = new Set<TipoMovimento>([
   "venda",
   "devolucao_fornecedor",
@@ -635,6 +641,7 @@ const TIPOS_SAIDA_ESTORNAVEL = new Set<TipoMovimento>([
   "uso_interno",
   "ajuste_saida",
   "os_saida",
+  "op_saida",
 ]);
 
 export type EstornarMovimentoInput = {

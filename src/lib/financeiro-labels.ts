@@ -31,3 +31,12 @@ export const TIPOS_REPASSE_LABEL: Record<string, string> = {
   dias_corridos: "Dias Corridos",
   mensal: "Mensal",
 };
+
+/** Periodicidade de um Lançamento Financeiro Recorrente. */
+export const PERIODICIDADE_LABEL: Record<string, string> = {
+  mensal: "Mensal",
+  bimestral: "Bimestral",
+  trimestral: "Trimestral",
+  semestral: "Semestral",
+  anual: "Anual",
+};

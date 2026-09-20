@@ -22,6 +22,7 @@ import {
   History,
   LogOut,
   Landmark,
+  Factory,
 } from "lucide-react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { cn } from "@/lib/utils";
@@ -45,6 +46,7 @@ const MAIS_ROUTES = [
   "/servicos",
   "/ordens-servico",
   "/lancamentos",
+  "/ordens-producao",
   "/estoque",
   "/usuarios",
 ];
@@ -103,6 +105,8 @@ export function BottomNav({
           "/centros-custo",
           "/processos",
           "/lancamentos-financeiros",
+          "/lancamentos-financeiros-recorrentes",
+          "/renegociacoes",
           "/fechamento-diario",
         ]
       : []),
@@ -206,6 +210,13 @@ export function BottomNav({
               >
                 <History className="size-[18px] flex-none text-primary" />
                 <span className="text-[13.5px] font-medium">Lançamentos</span>
+              </DialogClose>
+              <DialogClose
+                render={<Link href="/ordens-producao" />}
+                className="flex items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left active:bg-accent"
+              >
+                <Factory className="size-[18px] flex-none text-primary" />
+                <span className="text-[13.5px] font-medium">Ordens de Produção</span>
               </DialogClose>
               <DialogClose
                 render={<Link href="/estoque" />}

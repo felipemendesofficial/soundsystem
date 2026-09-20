@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Landmark, Users, Wallet, Layers, GitBranch, Receipt, CalendarCheck, ArrowLeftRight, ReceiptText, TrendingUp, Sliders, CreditCard } from "lucide-react";
+import { Landmark, Users, Wallet, Layers, GitBranch, Receipt, CalendarCheck, ArrowLeftRight, ReceiptText, TrendingUp, Sliders, CreditCard, Repeat, GitCompareArrows } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { podeGerenciarFinanceiro } from "@/lib/permissions";
 
 const SECOES = [
   { href: "/lancamentos-financeiros", label: "Lançamentos", descricao: "Contas a pagar e a receber", icon: Receipt },
+  { href: "/lancamentos-financeiros-recorrentes", label: "Lançamentos Recorrentes", descricao: "Água, luz, aluguel — gera automaticamente", icon: Repeat },
+  { href: "/renegociacoes", label: "Renegociações", descricao: "Fecha títulos e reabre em novas condições", icon: GitCompareArrows },
   { href: "/contas-financeiras", label: "Contas Financeiras", descricao: "Bancos, caixas e fundos fixos", icon: Landmark },
   { href: "/transferencias-entre-contas", label: "Transferências", descricao: "Movimenta dinheiro entre contas", icon: ArrowLeftRight },
   { href: "/aplicacoes-financeiras", label: "Aplicações Financeiras", descricao: "Aplicação, resgate e rendimento", icon: TrendingUp },

@@ -46,6 +46,8 @@ enum TipoMovimento {
   ajuste_saida
   transferencia_saida
   os_saida
+  op_entrada
+  op_saida
 }
 
 enum StatusOS {
@@ -148,15 +150,18 @@ model Empresa {
   orcamentos      Orcamento[]
   lancamentos     Lancamento[]
 
-  fechamentosDiarios       FechamentoDiario[]
-  contasFinanceiras        ContaFinanceira[]
-  processosFinanceiros     Processo[]
-  parametroFinanceiro      ParametroFinanceiro?
-  lancamentosFinanceiros   LancamentoFinanceiro[]
-  transferenciasContas     TransferenciaEntreContas[]
-  movimentosAplicacao      MovimentoAplicacao[]
-  movimentacoesFinanceiras MovimentacaoFinanceira[]
-  operadorasCartao         OperadoraCartao[]
+  fechamentosDiarios                FechamentoDiario[]
+  contasFinanceiras                 ContaFinanceira[]
+  processosFinanceiros              Processo[]
+  parametroFinanceiro               ParametroFinanceiro?
+  lancamentosFinanceiros            LancamentoFinanceiro[]
+  lancamentosFinanceirosRecorrentes LancamentoFinanceiroRecorrente[]
+  renegociacoes                     Renegociacao[]
+  ordensProducao                    OrdemProducao[]
+  transferenciasContas              TransferenciaEntreContas[]
+  movimentosAplicacao               MovimentoAplicacao[]
+  movimentacoesFinanceiras          MovimentacaoFinanceira[]
+  operadorasCartao                  OperadoraCartao[]
 
   @@map("empresas")
 }
@@ -186,15 +191,17 @@ model Deposito {
   ativo     Boolean  @default(true)
   criadoEm  DateTime @default(now()) @map("criado_em")
 
-  empresa               Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
-  usuarioEmpresasPadrao UsuarioEmpresa[] @relation("UsuarioEmpresaDepositoPadrao")
-  produtoEstoques       ProdutoEstoque[]
-  movimentacoes         Movimentacao[]
-  ordensServico         OrdemServico[]
-  orcamentos            Orcamento[]
-  lancamentos           Lancamento[]     @relation("LancamentoDeposito")
-  lancamentosOrigem     Lancamento[]     @relation("LancamentoDepositoOrigem")
-  lancamentosDestino    Lancamento[]     @relation("LancamentoDepositoDestino")
+  empresa                 Empresa                 @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  usuarioEmpresasPadrao   UsuarioEmpresa[]        @relation("UsuarioEmpresaDepositoPadrao")
+  produtoEstoques         ProdutoEstoque[]
+  movimentacoes           Movimentacao[]
+  ordensServico           OrdemServico[]
+  orcamentos              Orcamento[]
+  lancamentos             Lancamento[]            @relation("LancamentoDeposito")
+  lancamentosOrigem       Lancamento[]            @relation("LancamentoDepositoOrigem")
+  lancamentosDestino      Lancamento[]            @relation("LancamentoDepositoDestino")
+  ordensProducaoEntrada   OrdemProducao[]
+  ordensProducaoMateriais OrdemProducaoMaterial[]
 
   @@map("depositos")
 }
@@ -223,6 +230,8 @@ model Usuario {
   transferenciasEstornadas          TransferenciaEntreContas[] @relation("TransferenciaEstornadoPor")
   movimentosAplicacaoFeitos         MovimentoAplicacao[]       @relation("MovAplicacaoUsuario")
   movimentosAplicacaoEstornados     MovimentoAplicacao[]       @relation("MovAplicacaoEstornadoPor")
+  renegociacoesCriadas              Renegociacao[]
+  ordensProducao                    OrdemProducao[]
 
   @@map("usuarios")
 }
@@ -242,12 +251,13 @@ model Fornecedor {
   orcamentos    Orcamento[]
   lancamentos   Lancamento[]
 
-  lancamentosFinanceiros   LancamentoFinanceiro[]
-  movimentacoesFinanceiras MovimentacaoFinanceira[]
-  saldosAdiantamento       SaldoAdiantamentoTerceiro[]
-  transferenciasOrigem     TransferenciaEntreContas[]  @relation("TransfOrigemFornecedor")
-  transferenciasDestino    TransferenciaEntreContas[]  @relation("TransfDestinoFornecedor")
-  baixasAdiantamento       Baixa[]                     @relation("BaixaAdiantamentoFornecedor")
+  lancamentosFinanceiros            LancamentoFinanceiro[]
+  lancamentosFinanceirosRecorrentes LancamentoFinanceiroRecorrente[]
+  movimentacoesFinanceiras          MovimentacaoFinanceira[]
+  saldosAdiantamento                SaldoAdiantamentoTerceiro[]
+  transferenciasOrigem              TransferenciaEntreContas[]       @relation("TransfOrigemFornecedor")
+  transferenciasDestino             TransferenciaEntreContas[]       @relation("TransfDestinoFornecedor")
+  baixasAdiantamento                Baixa[]                          @relation("BaixaAdiantamentoFornecedor")
 
   @@map("fornecedores")
 }
@@ -268,12 +278,13 @@ model Cliente {
   ordensServico     OrdemServico[]
   lancamentos       Lancamento[]
 
-  lancamentosFinanceiros   LancamentoFinanceiro[]
-  movimentacoesFinanceiras MovimentacaoFinanceira[]
-  saldosAdiantamento       SaldoAdiantamentoTerceiro[]
-  transferenciasOrigem     TransferenciaEntreContas[]  @relation("TransfOrigemCliente")
-  transferenciasDestino    TransferenciaEntreContas[]  @relation("TransfDestinoCliente")
-  baixasAdiantamento       Baixa[]                     @relation("BaixaAdiantamentoCliente")
+  lancamentosFinanceiros            LancamentoFinanceiro[]
+  lancamentosFinanceirosRecorrentes LancamentoFinanceiroRecorrente[]
+  movimentacoesFinanceiras          MovimentacaoFinanceira[]
+  saldosAdiantamento                SaldoAdiantamentoTerceiro[]
+  transferenciasOrigem              TransferenciaEntreContas[]       @relation("TransfOrigemCliente")
+  transferenciasDestino             TransferenciaEntreContas[]       @relation("TransfDestinoCliente")
+  baixasAdiantamento                Baixa[]                          @relation("BaixaAdiantamentoCliente")
 
   @@map("clientes")
 }
@@ -388,15 +399,17 @@ model Produto {
   ativo             Boolean           @default(true)
   criadoEm          DateTime          @default(now()) @map("criado_em")
 
-  grupo            GrupoEmpresarial          @relation(fields: [grupoId], references: [id], onDelete: Restrict)
-  categoria        Categoria                 @relation(fields: [categoriaId], references: [id])
-  unidadeMedida    UnidadeMedida             @relation(fields: [unidadeMedidaId], references: [id])
-  estoques         ProdutoEstoque[]
-  movimentacoes    Movimentacao[]
-  itensOS          ItemOrdemServicoProduto[]
-  itensOrcamento   ItemOrcamento[]
-  itensTabelaPreco ItemTabelaPreco[]
-  itensLancamento  ItemLancamento[]
+  grupo                  GrupoEmpresarial          @relation(fields: [grupoId], references: [id], onDelete: Restrict)
+  categoria              Categoria                 @relation(fields: [categoriaId], references: [id])
+  unidadeMedida          UnidadeMedida             @relation(fields: [unidadeMedidaId], references: [id])
+  estoques               ProdutoEstoque[]
+  movimentacoes          Movimentacao[]
+  itensOS                ItemOrdemServicoProduto[]
+  itensOrcamento         ItemOrcamento[]
+  itensTabelaPreco       ItemTabelaPreco[]
+  itensLancamento        ItemLancamento[]
+  ordensProducaoFinal    OrdemProducao[]
+  ordensProducaoMaterial OrdemProducaoMaterial[]
 
   @@unique([grupoId, sku])
   @@map("produtos")
@@ -441,24 +454,26 @@ model Movimentacao {
   ordemServicoId      String?       @map("ordem_servico_id")
   orcamentoId         String?       @map("orcamento_id")
   lancamentoId        String?       @map("lancamento_id")
+  ordemProducaoId     String?       @map("ordem_producao_id")
   observacao          String?
   estornadoEm         DateTime?     @map("estornado_em")
   estornoDeId         String?       @map("estorno_de_id")
   criadoEm            DateTime      @default(now()) @map("criado_em")
 
-  produto      Produto          @relation(fields: [produtoId], references: [id])
-  deposito     Deposito         @relation(fields: [depositoId], references: [id])
-  empresa      Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
-  grupo        GrupoEmpresarial @relation(fields: [grupoId], references: [id], onDelete: Restrict)
-  cliente      Cliente?         @relation(fields: [clienteId], references: [id])
-  fornecedor   Fornecedor?      @relation(fields: [fornecedorId], references: [id])
-  vendedor     Vendedor?        @relation(fields: [vendedorId], references: [id])
-  usuario      Usuario          @relation(fields: [usuarioId], references: [id])
-  ordemServico OrdemServico?    @relation(fields: [ordemServicoId], references: [id])
-  orcamento    Orcamento?       @relation(fields: [orcamentoId], references: [id])
-  lancamento   Lancamento?      @relation(fields: [lancamentoId], references: [id])
-  estornoDe    Movimentacao?    @relation("EstornoMovimentacao", fields: [estornoDeId], references: [id])
-  estornos     Movimentacao[]   @relation("EstornoMovimentacao")
+  produto       Produto          @relation(fields: [produtoId], references: [id])
+  deposito      Deposito         @relation(fields: [depositoId], references: [id])
+  empresa       Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  grupo         GrupoEmpresarial @relation(fields: [grupoId], references: [id], onDelete: Restrict)
+  cliente       Cliente?         @relation(fields: [clienteId], references: [id])
+  fornecedor    Fornecedor?      @relation(fields: [fornecedorId], references: [id])
+  vendedor      Vendedor?        @relation(fields: [vendedorId], references: [id])
+  usuario       Usuario          @relation(fields: [usuarioId], references: [id])
+  ordemServico  OrdemServico?    @relation(fields: [ordemServicoId], references: [id])
+  orcamento     Orcamento?       @relation(fields: [orcamentoId], references: [id])
+  lancamento    Lancamento?      @relation(fields: [lancamentoId], references: [id])
+  ordemProducao OrdemProducao?   @relation(fields: [ordemProducaoId], references: [id])
+  estornoDe     Movimentacao?    @relation("EstornoMovimentacao", fields: [estornoDeId], references: [id])
+  estornos      Movimentacao[]   @relation("EstornoMovimentacao")
 
   @@index([produtoId, depositoId, dataMovimento])
   @@index([empresaId, dataMovimento])
@@ -545,8 +560,9 @@ model Servico {
   ativo       Boolean  @default(true)
   criadoEm    DateTime @default(now()) @map("criado_em")
 
-  grupo   GrupoEmpresarial          @relation(fields: [grupoId], references: [id], onDelete: Restrict)
-  itensOS ItemOrdemServicoServico[]
+  grupo              GrupoEmpresarial          @relation(fields: [grupoId], references: [id], onDelete: Restrict)
+  itensOS            ItemOrdemServicoServico[]
+  itensOrdemProducao OrdemProducaoServico[]
 
   @@unique([grupoId, nome])
   @@map("servicos")
@@ -700,6 +716,7 @@ enum StatusLancamentoFinanceiro {
   baixado
   estornado
   cancelado
+  renegociado
 }
 
 enum TipoConta {
@@ -952,19 +969,20 @@ model ContaFinanceira {
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Restrict)
   banco   Banco?  @relation(fields: [bancoId], references: [id])
 
-  lancamentosPrevistos       LancamentoFinanceiro[]      @relation("ContaPrevista")
-  baixas                     Baixa[]
-  estornos                   Estorno[]
-  movimentacoesOrigem        MovimentacaoFinanceira[]    @relation("ContaOrigem")
-  movimentacoesDestino       MovimentacaoFinanceira[]    @relation("ContaDestino")
-  saldosMensais              SaldoMensalConta[]
-  saldosAdiantamento         SaldoAdiantamentoTerceiro[]
-  extratoBancarioLinhas      ExtratoBancarioLinha[]
-  pendenciasConciliacao      PendenciaConciliacao[]
-  movimentosAplicacaoOrigem  MovimentoAplicacao[]        @relation("MovAplicacaoOrigem")
-  movimentosAplicacaoDestino MovimentoAplicacao[]        @relation("MovAplicacaoDestino")
-  transferenciasOrigem       TransferenciaEntreContas[]  @relation("TransfOrigem")
-  transferenciasDestino      TransferenciaEntreContas[]  @relation("TransfDestino")
+  lancamentosPrevistos            LancamentoFinanceiro[]           @relation("ContaPrevista")
+  lancamentosRecorrentesPrevistos LancamentoFinanceiroRecorrente[]
+  baixas                          Baixa[]
+  estornos                        Estorno[]
+  movimentacoesOrigem             MovimentacaoFinanceira[]         @relation("ContaOrigem")
+  movimentacoesDestino            MovimentacaoFinanceira[]         @relation("ContaDestino")
+  saldosMensais                   SaldoMensalConta[]
+  saldosAdiantamento              SaldoAdiantamentoTerceiro[]
+  extratoBancarioLinhas           ExtratoBancarioLinha[]
+  pendenciasConciliacao           PendenciaConciliacao[]
+  movimentosAplicacaoOrigem       MovimentoAplicacao[]             @relation("MovAplicacaoOrigem")
+  movimentosAplicacaoDestino      MovimentoAplicacao[]             @relation("MovAplicacaoDestino")
+  transferenciasOrigem            TransferenciaEntreContas[]       @relation("TransfOrigem")
+  transferenciasDestino           TransferenciaEntreContas[]       @relation("TransfDestino")
 
   @@index([empresaId, tipo])
   @@map("contas_financeiras")
@@ -978,24 +996,24 @@ model ContaFinanceira {
 /// existir antes de configurar isso — obrigatoriedade validada em Server
 /// Action no momento de registrar um MovimentoAplicacao.
 model ParametroFinanceiro {
-  id                    String   @id @default(uuid())
-  empresaId             String   @unique @map("empresa_id")
-  planoAplicacaoId      String?  @map("plano_aplicacao_id")
-  planoResgateId        String?  @map("plano_resgate_id")
-  planoRendimentoId     String?  @map("plano_rendimento_id")
+  id                    String    @id @default(uuid())
+  empresaId             String    @unique @map("empresa_id")
+  planoAplicacaoId      String?   @map("plano_aplicacao_id")
+  planoResgateId        String?   @map("plano_resgate_id")
+  planoRendimentoId     String?   @map("plano_rendimento_id")
   // Empréstimo contraído no banco injeta dinheiro novo (não é só realocação
   // entre contas próprias) — precisa de um Plano Financeiro pra aparecer
   // corretamente no fluxo de caixa, ao contrário das demais Transferências.
-  planoEmprestimoId     String?  @map("plano_emprestimo_id")
+  planoEmprestimoId     String?   @map("plano_emprestimo_id")
   // Sugestão pré-preenchida de multa por atraso na Baixa (%) — sempre editável
   // linha a linha; null usa o padrão do código (2%, teto do CDC art. 52 §1º).
-  percentualMultaPadrao Decimal? @map("percentual_multa_padrao") @db.Decimal(5, 2)
+  percentualMultaPadrao Decimal?  @map("percentual_multa_padrao") @db.Decimal(5, 2)
   // "Chão" da sequência de Fechamento Diário — enquanto nenhum FechamentoDiario
   // existir ainda, é a partir dela (não de hoje) que "Fechar o dia" e o limite
   // inferior de data de lançamento passam a valer. Permite iniciar o controle
   // com lançamentos retroativos e ir fechando os dias até alcançar hoje.
   dataInicioControle    DateTime? @map("data_inicio_controle")
-  atualizadoEm          DateTime @updatedAt @map("atualizado_em")
+  atualizadoEm          DateTime  @updatedAt @map("atualizado_em")
 
   empresa         Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
   planoAplicacao  PlanoFinanceiro? @relation("ParamPlanoAplicacao", fields: [planoAplicacaoId], references: [id])
@@ -1053,12 +1071,13 @@ model PlanoFinanceiro {
   filhos  PlanoFinanceiro[]      @relation("PlanoHierarquia")
 
   rateios              LancamentoRateio[]
+  rateiosRecorrentes   LancamentoFinanceiroRecorrenteRateioPlano[]
   retencoes            Retencao[]
   movimentacoes        MovimentacaoFinanceira[]
-  parametrosAplicacao  ParametroFinanceiro[]    @relation("ParamPlanoAplicacao")
-  parametrosResgate    ParametroFinanceiro[]    @relation("ParamPlanoResgate")
-  parametrosRendimento ParametroFinanceiro[]    @relation("ParamPlanoRendimento")
-  parametrosEmprestimo ParametroFinanceiro[]    @relation("ParamPlanoEmprestimo")
+  parametrosAplicacao  ParametroFinanceiro[]                       @relation("ParamPlanoAplicacao")
+  parametrosResgate    ParametroFinanceiro[]                       @relation("ParamPlanoResgate")
+  parametrosRendimento ParametroFinanceiro[]                       @relation("ParamPlanoRendimento")
+  parametrosEmprestimo ParametroFinanceiro[]                       @relation("ParamPlanoEmprestimo")
 
   @@unique([grupoId, codigo])
   @@index([paiId])
@@ -1108,7 +1127,8 @@ model CentroCusto {
   pai     CentroCusto?       @relation("CentroCustoHierarquia", fields: [paiId], references: [id])
   filhos  CentroCusto[]      @relation("CentroCustoHierarquia")
 
-  rateios LancamentoRateioCentroCusto[]
+  rateios            LancamentoRateioCentroCusto[]
+  rateiosRecorrentes LancamentoFinanceiroRecorrenteRateioCentroCusto[]
 
   @@unique([grupoId, codigo])
   @@index([paiId])
@@ -1155,8 +1175,9 @@ model Processo {
   empresa Empresa         @relation(fields: [empresaId], references: [id], onDelete: Restrict)
   mascara MascaraProcesso @relation(fields: [mascaraId], references: [id])
 
-  itens       ProcessoItem[]
-  lancamentos LancamentoFinanceiro[]
+  itens                  ProcessoItem[]
+  lancamentos            LancamentoFinanceiro[]
+  lancamentosRecorrentes LancamentoFinanceiroRecorrente[]
 
   // Restrição de "só 1 padrao=true por empresa" implementada via índice único
   // parcial na migration: CREATE UNIQUE INDEX ... WHERE padrao = true
@@ -1178,7 +1199,8 @@ model ProcessoItem {
   pai      ProcessoItem?  @relation("ProcessoItemHierarquia", fields: [paiId], references: [id])
   filhos   ProcessoItem[] @relation("ProcessoItemHierarquia")
 
-  rateios LancamentoRateioProcesso[]
+  rateios            LancamentoRateioProcesso[]
+  rateiosRecorrentes LancamentoFinanceiroRecorrenteRateioProcesso[]
 
   @@unique([processoId, codigo])
   @@map("processo_itens")
@@ -1216,20 +1238,26 @@ model LancamentoFinanceiro {
 
   processoId String @map("processo_id")
 
+  // Preenchido quando este lançamento nasceu de uma geração automática de
+  // Lançamento Recorrente — puramente informativo/rastreio, não muda nenhuma
+  // validação (o lançamento gerado segue as mesmas regras de qualquer outro).
+  recorrenteId String? @map("recorrente_id")
+
   observacao      String?
   criadoEm        DateTime  @default(now()) @map("criado_em")
   criadoPorId     String?   @map("criado_por_id")
   atualizadoEm    DateTime? @map("atualizado_em") // só setado por uma edição manual (atualizarLancamentoFinanceiro) — nunca por baixa/estorno/confirmação de previsão
   atualizadoPorId String?   @map("atualizado_por_id")
 
-  empresa       Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
-  portador      Portador?        @relation(fields: [portadorId], references: [id])
-  contaPrevista ContaFinanceira? @relation("ContaPrevista", fields: [contaPrevistaId], references: [id])
-  cliente       Cliente?         @relation(fields: [clienteId], references: [id])
-  fornecedor    Fornecedor?      @relation(fields: [fornecedorId], references: [id])
-  processo      Processo         @relation(fields: [processoId], references: [id])
-  criadoPor     Usuario?         @relation("LancamentoFinanceiroCriadoPor", fields: [criadoPorId], references: [id])
-  atualizadoPor Usuario?         @relation("LancamentoFinanceiroAtualizadoPor", fields: [atualizadoPorId], references: [id])
+  empresa       Empresa                         @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  portador      Portador?                       @relation(fields: [portadorId], references: [id])
+  contaPrevista ContaFinanceira?                @relation("ContaPrevista", fields: [contaPrevistaId], references: [id])
+  cliente       Cliente?                        @relation(fields: [clienteId], references: [id])
+  fornecedor    Fornecedor?                     @relation(fields: [fornecedorId], references: [id])
+  processo      Processo                        @relation(fields: [processoId], references: [id])
+  recorrente    LancamentoFinanceiroRecorrente? @relation(fields: [recorrenteId], references: [id])
+  criadoPor     Usuario?                        @relation("LancamentoFinanceiroCriadoPor", fields: [criadoPorId], references: [id])
+  atualizadoPor Usuario?                        @relation("LancamentoFinanceiroAtualizadoPor", fields: [atualizadoPorId], references: [id])
 
   rateios             LancamentoRateio[]
   rateiosProcesso     LancamentoRateioProcesso[]
@@ -1246,10 +1274,13 @@ model LancamentoFinanceiro {
   dadosCheque         DadosCheque?
   dadosCartao         DadosCartao?
   movimentacoes       MovimentacaoFinanceira[]
+  renegociacaoOrigem  RenegociacaoOrigem?
+  renegociacaoDestino RenegociacaoDestino?
 
   @@index([empresaId, status])
   @@index([empresaId, tipo, natureza])
   @@index([processoId])
+  @@index([recorrenteId])
   @@map("lancamentos_financeiros")
 }
 
@@ -1694,4 +1725,207 @@ model PendenciaConciliacao {
   movimentacaoVinculada MovimentacaoFinanceira? @relation(fields: [movimentacaoVinculadaId], references: [id])
 
   @@map("pendencias_conciliacao")
+}
+
+enum Periodicidade {
+  mensal
+  bimestral
+  trimestral
+  semestral
+  anual
+}
+
+/// Template que gera LancamentoFinanceiro automaticamente (água, luz,
+/// telefone, contador, aluguel, segurança etc.), com rateio triplo
+/// pré-configurado. Geração é sempre manual (tela "Gerar Pendentes") — não
+/// existe job/cron neste projeto, não introduzir um aqui.
+model LancamentoFinanceiroRecorrente {
+  id              String                   @id @default(uuid())
+  empresaId       String                   @map("empresa_id")
+  tipo            TipoLancamentoFinanceiro
+  descricao       String
+  fornecedorId    String?                  @map("fornecedor_id") // mutuamente exclusivo com clienteId, igual LancamentoFinanceiro
+  clienteId       String?                  @map("cliente_id")
+  tipoDocumento   TipoDocumento            @map("tipo_documento")
+  contaPrevistaId String?                  @map("conta_prevista_id")
+  processoId      String                   @map("processo_id")
+  natureza        NaturezaLancamento // natureza com que cada geração nasce (real ou prevista)
+  periodicidade   Periodicidade
+  diaVencimento   Int                      @map("dia_vencimento") // 1-31; dia além do fim do mês é ajustado pro último dia real
+  dataInicio      DateTime                 @map("data_inicio")
+  dataFim         DateTime?                @map("data_fim")
+  ativo           Boolean                  @default(true)
+  criadoEm        DateTime                 @default(now()) @map("criado_em")
+
+  empresa       Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  fornecedor    Fornecedor?      @relation(fields: [fornecedorId], references: [id])
+  cliente       Cliente?         @relation(fields: [clienteId], references: [id])
+  contaPrevista ContaFinanceira? @relation(fields: [contaPrevistaId], references: [id])
+  processo      Processo         @relation(fields: [processoId], references: [id])
+
+  rateiosPlano       LancamentoFinanceiroRecorrenteRateioPlano[]
+  rateiosProcesso    LancamentoFinanceiroRecorrenteRateioProcesso[]
+  lancamentosGerados LancamentoFinanceiro[]
+
+  @@index([empresaId, ativo])
+  @@map("lancamentos_financeiros_recorrentes")
+}
+
+model LancamentoFinanceiroRecorrenteRateioPlano {
+  id           String  @id @default(uuid())
+  recorrenteId String  @map("recorrente_id")
+  planoId      String  @map("plano_id")
+  percentual   Decimal @db.Decimal(5, 2)
+
+  recorrente LancamentoFinanceiroRecorrente @relation(fields: [recorrenteId], references: [id], onDelete: Cascade)
+  plano      PlanoFinanceiro                @relation(fields: [planoId], references: [id])
+
+  rateiosCentroCusto LancamentoFinanceiroRecorrenteRateioCentroCusto[]
+
+  @@unique([recorrenteId, planoId])
+  @@map("lancamentos_financeiros_recorrentes_rateio_plano")
+}
+
+model LancamentoFinanceiroRecorrenteRateioCentroCusto {
+  id            String  @id @default(uuid())
+  rateioPlanoId String  @map("rateio_plano_id")
+  centroCustoId String  @map("centro_custo_id")
+  percentual    Decimal @db.Decimal(5, 2)
+
+  rateioPlano LancamentoFinanceiroRecorrenteRateioPlano @relation(fields: [rateioPlanoId], references: [id], onDelete: Cascade)
+  centroCusto CentroCusto                               @relation(fields: [centroCustoId], references: [id])
+
+  @@unique([rateioPlanoId, centroCustoId])
+  @@map("lancamentos_financeiros_recorrentes_rateio_centro_custo")
+}
+
+model LancamentoFinanceiroRecorrenteRateioProcesso {
+  id             String  @id @default(uuid())
+  recorrenteId   String  @map("recorrente_id")
+  processoItemId String  @map("processo_item_id")
+  percentual     Decimal @db.Decimal(5, 2)
+
+  recorrente   LancamentoFinanceiroRecorrente @relation(fields: [recorrenteId], references: [id], onDelete: Cascade)
+  processoItem ProcessoItem                   @relation(fields: [processoItemId], references: [id])
+
+  @@unique([recorrenteId, processoItemId])
+  @@map("lancamentos_financeiros_recorrentes_rateio_processo")
+}
+
+/// Fecha um ou vários títulos existentes sem movimentar dinheiro (nunca gera
+/// Baixa/MovimentacaoFinanceira), substituindo por um ou vários títulos
+/// novos com juros/multa/desconto. Mantém trilha de auditoria encadeável —
+/// um título novo pode, futuramente, virar origem de outra Renegociacao (ver
+/// RenegociacaoDestino.lancamentoId, que também pode aparecer como
+/// RenegociacaoOrigem.lancamentoId em outra linha).
+model Renegociacao {
+  id          String                   @id @default(uuid())
+  empresaId   String                   @map("empresa_id")
+  tipo        TipoLancamentoFinanceiro // origem e destino sempre do mesmo tipo — nunca mistura despesa com receita
+  motivo      String
+  criadoPorId String                   @map("criado_por_id")
+  criadoEm    DateTime                 @default(now()) @map("criado_em")
+
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  criadoPor Usuario @relation(fields: [criadoPorId], references: [id])
+
+  origens  RenegociacaoOrigem[]
+  destinos RenegociacaoDestino[]
+
+  @@index([empresaId])
+  @@map("renegociacoes")
+}
+
+model RenegociacaoOrigem {
+  id             String @id @default(uuid())
+  renegociacaoId String @map("renegociacao_id")
+  lancamentoId   String @unique @map("lancamento_id") // um título só pode ser origem de UMA renegociação
+
+  renegociacao Renegociacao         @relation(fields: [renegociacaoId], references: [id], onDelete: Cascade)
+  lancamento   LancamentoFinanceiro @relation(fields: [lancamentoId], references: [id])
+
+  @@map("renegociacoes_origens")
+}
+
+model RenegociacaoDestino {
+  id                    String  @id @default(uuid())
+  renegociacaoId        String  @map("renegociacao_id")
+  lancamentoId          String  @unique @map("lancamento_id")
+  juros                 Decimal @default(0) @db.Decimal(14, 2)
+  multa                 Decimal @default(0) @db.Decimal(14, 2)
+  desconto              Decimal @default(0) @db.Decimal(14, 2)
+  justificativaDesconto String? @map("justificativa_desconto") // obrigatória na Server Action quando desconto > 0
+
+  renegociacao Renegociacao         @relation(fields: [renegociacaoId], references: [id], onDelete: Cascade)
+  lancamento   LancamentoFinanceiro @relation(fields: [lancamentoId], references: [id])
+
+  @@map("renegociacoes_destinos")
+}
+
+enum StatusOrdemProducao {
+  aberta
+  processada
+}
+
+/// Novo tipo de movimento no Kardex: consome N produtos/serviços do estoque
+/// pra gerar entrada de 1 produto final, com custo médio recalculado. Mesmo
+/// padrão "congela ao fechar, reverte via estorno exato" já usado em
+/// Orçamento/Lancamento (ver kardex.ts).
+model OrdemProducao {
+  id                    String              @id @default(uuid())
+  empresaId             String              @map("empresa_id")
+  depositoEntradaId     String              @map("deposito_entrada_id") // único depósito de destino do produto final
+  produtoFinalId        String              @map("produto_final_id")
+  quantidadeEntrada     Decimal             @map("quantidade_entrada") @db.Decimal(14, 3)
+  custoUnitarioFinal    Decimal?            @map("custo_unitario_final") @db.Decimal(14, 4) // congelado ao processar
+  status                StatusOrdemProducao @default(aberta)
+  usuarioId             String              @map("usuario_id")
+  criadoEm              DateTime            @default(now()) @map("criado_em")
+  processadoEm          DateTime?           @map("processado_em")
+  // Movimentacao (tipo op_entrada) do produto final, gerada ao processar —
+  // permite reverter exatamente via `estornarLinhaDeMovimentoNaTransacao` no estorno.
+  movimentacaoEntradaId String?             @unique @map("movimentacao_entrada_id")
+
+  empresa         Empresa  @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  depositoEntrada Deposito @relation(fields: [depositoEntradaId], references: [id])
+  produtoFinal    Produto  @relation(fields: [produtoFinalId], references: [id])
+  usuario         Usuario  @relation(fields: [usuarioId], references: [id])
+
+  materiais     OrdemProducaoMaterial[]
+  servicos      OrdemProducaoServico[]
+  movimentacoes Movimentacao[]
+
+  @@index([empresaId, status])
+  @@map("ordens_producao")
+}
+
+model OrdemProducaoMaterial {
+  id                    String   @id @default(uuid())
+  ordemProducaoId       String   @map("ordem_producao_id")
+  produtoId             String   @map("produto_id")
+  depositoId            String   @map("deposito_id") // depósito de SAÍDA desta linha — independente do depositoEntradaId do cabeçalho
+  quantidade            Decimal  @db.Decimal(14, 3)
+  custoUnitarioDebitado Decimal? @map("custo_unitario_debitado") @db.Decimal(14, 4) // congelado no processamento
+  // Movimentacao (tipo op_saida) gerada por esta linha ao processar — permite
+  // reverter exatamente esta linha via `estornarLinhaDeMovimentoNaTransacao`
+  // (kardex.ts) no estorno da OP, sem precisar re-derivar qual movimento é de qual linha.
+  movimentacaoId        String?  @unique @map("movimentacao_id")
+
+  ordemProducao OrdemProducao @relation(fields: [ordemProducaoId], references: [id], onDelete: Cascade)
+  produto       Produto       @relation(fields: [produtoId], references: [id])
+  deposito      Deposito      @relation(fields: [depositoId], references: [id])
+
+  @@map("ordens_producao_materiais")
+}
+
+model OrdemProducaoServico {
+  id              String  @id @default(uuid())
+  ordemProducaoId String  @map("ordem_producao_id")
+  servicoId       String  @map("servico_id")
+  valor           Decimal @db.Decimal(14, 2) // puramente aditivo no custo, sem movimento de estoque
+
+  ordemProducao OrdemProducao @relation(fields: [ordemProducaoId], references: [id], onDelete: Cascade)
+  servico       Servico       @relation(fields: [servicoId], references: [id])
+
+  @@map("ordens_producao_servicos")
 }

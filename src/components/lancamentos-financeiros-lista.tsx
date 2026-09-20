@@ -12,7 +12,7 @@ export type ItemLancamentoFinanceiro = {
   id: string;
   historico: string;
   tipo: "receita" | "despesa";
-  status: "aberto" | "baixado" | "estornado" | "cancelado";
+  status: "aberto" | "baixado" | "estornado" | "cancelado" | "renegociado";
   valor: string;
   valorNumerico: number;
   tipoDocumento: string;
@@ -48,6 +48,7 @@ const STATUS_LABEL: Record<ItemLancamentoFinanceiro["status"], string> = {
   baixado: "Baixado",
   estornado: "Estornado",
   cancelado: "Cancelado",
+  renegociado: "Renegociado",
 };
 
 export function LancamentosFinanceirosLista({ itens }: { itens: ItemLancamentoFinanceiro[] }) {

@@ -27,6 +27,7 @@ const STATUS_LABEL: Record<string, string> = {
   baixado: "Baixado",
   estornado: "Estornado",
   cancelado: "Cancelado",
+  renegociado: "Renegociado",
 };
 
 export default async function LancamentoFinanceiroDetalhePage({ params }: { params: Promise<{ id: string }> }) {
@@ -61,6 +62,12 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
           utilizadoComoChequeEm: { include: { baixaDespesa: { include: { lancamento: { include: { fornecedor: true } } } } } },
         },
         orderBy: { dataBaixa: "desc" },
+      },
+      renegociacaoOrigem: {
+        include: { renegociacao: { include: { destinos: { include: { lancamento: { include: { cliente: true, fornecedor: true } } } } } } },
+      },
+      renegociacaoDestino: {
+        include: { renegociacao: { include: { origens: { include: { lancamento: { include: { cliente: true, fornecedor: true } } } } } } },
       },
     },
   });
@@ -119,6 +126,40 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
           <div className="pt-1 text-muted-foreground">Obs.: {lancamento.observacao}</div>
         )}
       </div>
+
+      {lancamento.renegociacaoOrigem && (
+        <div className="space-y-2 rounded-lg border border-border bg-card p-4 text-sm">
+          <h2 className="text-base font-semibold">Renegociado</h2>
+          <p className="text-xs text-muted-foreground">Motivo: {lancamento.renegociacaoOrigem.renegociacao.motivo}</p>
+          <p className="text-xs text-muted-foreground">Virou:</p>
+          <ul className="space-y-1">
+            {lancamento.renegociacaoOrigem.renegociacao.destinos.map((d) => (
+              <li key={d.id}>
+                <Link href={`/lancamentos-financeiros/${d.lancamentoId}`} className="text-primary underline">
+                  {d.lancamento.historicoSimplificado} — {formatarMoeda(d.lancamento.valorOriginal)}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {lancamento.renegociacaoDestino && (
+        <div className="space-y-2 rounded-lg border border-border bg-card p-4 text-sm">
+          <h2 className="text-base font-semibold">Originado de Renegociação</h2>
+          <p className="text-xs text-muted-foreground">Motivo: {lancamento.renegociacaoDestino.renegociacao.motivo}</p>
+          <p className="text-xs text-muted-foreground">Veio de:</p>
+          <ul className="space-y-1">
+            {lancamento.renegociacaoDestino.renegociacao.origens.map((o) => (
+              <li key={o.id}>
+                <Link href={`/lancamentos-financeiros/${o.lancamentoId}`} className="text-primary underline">
+                  {o.lancamento.historicoSimplificado} — {formatarMoeda(o.lancamento.valorOriginal)}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {lancamento.dadosCheque && (
         <div className="space-y-1 rounded-lg border border-border bg-card p-4 text-sm">

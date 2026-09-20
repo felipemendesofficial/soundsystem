@@ -131,7 +131,7 @@ const lancamentoSchema = z.object({
   path: ["dataVencimento"],
 });
 
-type DadosLancamento = z.infer<typeof lancamentoSchema>;
+export type DadosLancamento = z.infer<typeof lancamentoSchema>;
 
 function lerFormData(formData: FormData) {
   return lancamentoSchema.safeParse({
@@ -392,12 +392,40 @@ function montarDadosPersistencia(dados: DadosLancamento, valores: ValidacaoOk) {
 }
 
 /**
- * Cadastra um Lançamento Financeiro (conta a pagar/receber) com o rateio
- * triplo. Nunca move dinheiro nem grava no ledger — isso só acontece na
- * Baixa (`darBaixaLancamento`), mesmo espírito do estoque (um Lançamento de
- * compra só afeta o Kardex quando confirmado). Uma `prevista` fica travada
- * pra Baixa até ser confirmada (`confirmarPrevisao`), que a converte em `real`.
+ * Núcleo de criação, sem FormData/redirect — usado pelo form normal
+ * (`criarLancamentoFinanceiro`) e pela geração de Lançamentos Recorrentes
+ * (`lancamentos-financeiros-recorrentes/actions.ts#gerarPendentes`), que já
+ * monta um `DadosLancamento` a partir do template em vez de FormData. Nunca
+ * move dinheiro nem grava no ledger — isso só acontece na Baixa
+ * (`darBaixaLancamento`), mesmo espírito do estoque (um Lançamento de compra
+ * só afeta o Kardex quando confirmado).
  */
+export async function criarLancamentoFinanceiroDeDados(
+  dados: DadosLancamento,
+  ctx: { empresaId: string; grupoId: string; criadoPorId?: string; recorrenteId?: string }
+): Promise<{ lancamentoId: string } | { erro: string }> {
+  const validado = await validarRegrasDeNegocio(dados, ctx);
+  if ("erro" in validado) return { erro: (validado as { erro: string }).erro };
+
+  const ultimoFechamento = await obterUltimoFechamentoAtivo(db, ctx.empresaId);
+  const dataMovimento = ultimoFechamento?.data ?? new Date();
+
+  try {
+    const lancamento = await db.lancamentoFinanceiro.create({
+      data: {
+        empresaId: ctx.empresaId,
+        dataMovimento,
+        criadoPorId: ctx.criadoPorId,
+        recorrenteId: ctx.recorrenteId,
+        ...montarDadosPersistencia(dados, validado),
+      },
+    });
+    return { lancamentoId: lancamento.id };
+  } catch {
+    return { erro: "Não foi possível salvar o lançamento." };
+  }
+}
+
 export async function criarLancamentoFinanceiro(
   _prev: LancamentoFinanceiroFormState,
   formData: FormData
@@ -409,31 +437,16 @@ export async function criarLancamentoFinanceiro(
 
   const parsed = lerFormData(formData);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
-  const dados = parsed.data;
 
-  const validado = await validarRegrasDeNegocio(dados, { empresaId, grupoId });
-  if ("erro" in validado) return validado;
-
-  const ultimoFechamento = await obterUltimoFechamentoAtivo(db, empresaId);
-  const dataMovimento = ultimoFechamento?.data ?? new Date();
-
-  let lancamentoId: string;
-  try {
-    const lancamento = await db.lancamentoFinanceiro.create({
-      data: {
-        empresaId,
-        dataMovimento,
-        criadoPorId: permissao.session.user.id,
-        ...montarDadosPersistencia(dados, validado),
-      },
-    });
-    lancamentoId = lancamento.id;
-  } catch {
-    return { erro: "Não foi possível salvar o lançamento." };
-  }
+  const resultado = await criarLancamentoFinanceiroDeDados(parsed.data, {
+    empresaId,
+    grupoId,
+    criadoPorId: permissao.session.user.id,
+  });
+  if ("erro" in resultado) return resultado;
 
   revalidatePath("/lancamentos-financeiros");
-  redirect(`/lancamentos-financeiros/${lancamentoId}`);
+  redirect(`/lancamentos-financeiros/${resultado.lancamentoId}`);
 }
 
 /** Atualiza um Lançamento Financeiro `aberto` — recria o rateio triplo do zero a partir do formulário. */
