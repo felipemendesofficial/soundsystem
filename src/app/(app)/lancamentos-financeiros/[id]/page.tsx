@@ -43,7 +43,7 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
       contaPrevista: true,
       processo: true,
       dadosCheque: true,
-      dadosCartao: true,
+      dadosCartao: { include: { operadora: true } },
       criadoPor: true,
       atualizadoPor: true,
       rateios: { include: { plano: true, rateiosCentroCusto: { include: { centroCusto: true } } } },
@@ -57,8 +57,8 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
           adiantamentoCliente: true,
           adiantamentoFornecedor: true,
           estorno: { include: { conta: true } },
-          chequesUtilizados: { include: { baixaCheque: { include: { lancamento: true } } } },
-          utilizadoComoChequeEm: { include: { baixaDespesa: { include: { lancamento: true } } } },
+          chequesUtilizados: { include: { baixaCheque: { include: { lancamento: { include: { dadosCheque: true, cliente: true } } } } } },
+          utilizadoComoChequeEm: { include: { baixaDespesa: { include: { lancamento: { include: { fornecedor: true } } } } } },
         },
         orderBy: { dataBaixa: "desc" },
       },
@@ -139,7 +139,7 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
       {lancamento.dadosCartao && (
         <div className="space-y-1 rounded-lg border border-border bg-card p-4 text-sm">
           <h2 className="mb-1 text-base font-semibold">Dados do Cartão</h2>
-          <div className="flex justify-between"><span className="text-muted-foreground">Operadora</span><span className="font-medium">{lancamento.dadosCartao.operadora ?? "-"}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Operadora</span><span className="font-medium">{lancamento.dadosCartao.operadora?.descricao ?? "-"}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Número do Cartão</span><span className="font-medium">{lancamento.dadosCartao.numeroCartao ?? "-"}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Número de Autorização</span><span className="font-medium">{lancamento.dadosCartao.numeroAutorizacao ?? "-"}</span></div>
           <div className="flex justify-between">
@@ -266,19 +266,43 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
                 )}
 
                 {b.chequesUtilizados.length > 0 && (
-                  <div className="mt-2 space-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
+                  <div className="mt-2 space-y-2 border-t border-border pt-2 text-xs text-muted-foreground">
                     <div className="font-medium text-foreground">Pago com cheque(s) de terceiro:</div>
-                    {b.chequesUtilizados.map((c) => (
-                      <div key={c.id} className="flex justify-between">
-                        <span>{c.baixaCheque.lancamento.historicoSimplificado}</span>
-                        <span>{formatarMoeda(c.baixaCheque.valorBaixado)}</span>
-                      </div>
-                    ))}
+                    {b.chequesUtilizados.map((c) => {
+                      const chequeLancamento = c.baixaCheque.lancamento;
+                      return (
+                        <div key={c.id} className="space-y-0.5">
+                          <div className="flex justify-between">
+                            <span>{chequeLancamento.cliente?.nome ?? chequeLancamento.historicoSimplificado}</span>
+                            <span className="font-medium text-foreground">{formatarMoeda(c.baixaCheque.valorBaixado)}</span>
+                          </div>
+                          {chequeLancamento.dadosCheque && (
+                            <div>
+                              {[
+                                chequeLancamento.dadosCheque.numeroCheque && `Nº ${chequeLancamento.dadosCheque.numeroCheque}`,
+                                chequeLancamento.dadosCheque.banco,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 {b.utilizadoComoChequeEm && (
-                  <div className="mt-2 border-t border-border pt-2 text-xs text-muted-foreground">
-                    Repassado pra pagar: {b.utilizadoComoChequeEm.baixaDespesa.lancamento.historicoSimplificado}
+                  <div className="mt-2 space-y-0.5 border-t border-border pt-2 text-xs text-muted-foreground">
+                    <div className="font-medium text-foreground">
+                      Repassado pra pagar: {b.utilizadoComoChequeEm.baixaDespesa.lancamento.historicoSimplificado}
+                    </div>
+                    {b.utilizadoComoChequeEm.baixaDespesa.lancamento.fornecedor && (
+                      <div>Fornecedor: {b.utilizadoComoChequeEm.baixaDespesa.lancamento.fornecedor.nome}</div>
+                    )}
+                    {b.utilizadoComoChequeEm.baixaDespesa.lancamento.documento && (
+                      <div>Documento: {b.utilizadoComoChequeEm.baixaDespesa.lancamento.documento}</div>
+                    )}
+                    <div>Valor: {formatarMoeda(b.utilizadoComoChequeEm.baixaDespesa.valorBaixado)}</div>
                   </div>
                 )}
 
@@ -287,11 +311,6 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
                     <Button size="sm" variant="outline" render={<Link href={`/lancamentos-financeiros/${id}/estorno`} />}>
                       Estornar Baixa
                     </Button>
-                    {lancamento.tipo === "despesa" && lancamento.tipoDocumento.startsWith("cheque_") && b.chequesUtilizados.length === 0 && (
-                      <Button size="sm" variant="outline" render={<Link href={`/lancamentos-financeiros/${id}/vincular-cheque`} />}>
-                        Pagar com Cheque de Terceiro
-                      </Button>
-                    )}
                   </div>
                 )}
               </li>

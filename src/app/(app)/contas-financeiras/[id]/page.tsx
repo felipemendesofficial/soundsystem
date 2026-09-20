@@ -20,9 +20,10 @@ export default async function EditarContaFinanceiraPage({ params }: { params: Pr
   const session = await auth();
   if (!session?.user || !podeGerenciarFinanceiro(session.user.perfil)) redirect("/");
 
-  const [conta, saldosMensais] = await Promise.all([
+  const [conta, saldosMensais, bancos] = await Promise.all([
     db.contaFinanceira.findFirst({ where: { id, empresaId: session.user.empresaId! } }),
     db.saldoMensalConta.findMany({ where: { contaId: id }, orderBy: { competencia: "desc" }, take: 12 }),
+    db.banco.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
   ]);
   if (!conta) notFound();
 
@@ -37,12 +38,13 @@ export default async function EditarContaFinanceiraPage({ params }: { params: Pr
 
       <ContaFinanceiraForm
         action={atualizarContaFinanceira.bind(null, id)}
+        bancos={bancos.map((b) => ({ id: b.id, label: b.nome }))}
         defaultValues={{
           tipo: conta.tipo,
           nome: conta.nome,
           numeroConta: conta.numeroConta,
           agencia: conta.agencia,
-          banco: conta.banco,
+          bancoId: conta.bancoId,
           limiteCredito: conta.limiteCredito ? Number(conta.limiteCredito) : null,
           dataAbertura: conta.dataAbertura ? conta.dataAbertura.toISOString().slice(0, 10) : null,
           valorFundoFixo: conta.valorFundoFixo ? Number(conta.valorFundoFixo) : null,

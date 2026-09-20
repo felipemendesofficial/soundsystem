@@ -9,7 +9,11 @@ import { Prisma } from "@/generated/prisma/client";
 import { podeGerenciarFinanceiro } from "@/lib/permissions";
 import { normalizarTexto } from "@/lib/texto";
 import { validarSomaPercentual, distribuirValor } from "@/lib/rateio-financeiro";
-import { registrarBaixa, registrarEstorno, obterUltimoFechamentoAtivo } from "@/lib/financeiro-ledger";
+import {
+  registrarBaixaNaTransacao,
+  registrarEstornoNaTransacao,
+  obterUltimoFechamentoAtivo,
+} from "@/lib/financeiro-ledger";
 import { erroContaParaBaixa } from "@/lib/regras-conta-baixa";
 
 export type LancamentoFinanceiroFormState = { erro?: string };
@@ -117,7 +121,7 @@ const lancamentoSchema = z.object({
   chequeCpf: z.string().trim().nullish(),
   chequeTelefone: z.string().trim().nullish(),
   chequeTerceiro: z.string().trim().nullish(),
-  cartaoOperadora: z.string().trim().nullish(),
+  cartaoOperadoraId: z.string().trim().nullish(),
   cartaoNumeroCartao: z.string().trim().nullish(),
   cartaoNumeroAutorizacao: z.string().trim().nullish(),
   cartaoTipoTaxa: z.enum(["a_vista", "antecipacao", "parc_estabelecimento", "parc_cliente"]).optional(),
@@ -159,7 +163,7 @@ function lerFormData(formData: FormData) {
     chequeCpf: formData.get("chequeCpf"),
     chequeTelefone: formData.get("chequeTelefone"),
     chequeTerceiro: formData.get("chequeTerceiro"),
-    cartaoOperadora: formData.get("cartaoOperadora"),
+    cartaoOperadoraId: formData.get("cartaoOperadoraId"),
     cartaoNumeroCartao: formData.get("cartaoNumeroCartao"),
     cartaoNumeroAutorizacao: formData.get("cartaoNumeroAutorizacao"),
     cartaoTipoTaxa: formData.get("cartaoTipoTaxa") || undefined,
@@ -187,6 +191,11 @@ async function validarRegrasDeNegocio(dados: DadosLancamento, ctx: { empresaId: 
     if (!contaPrevista) return { erro: "Conta prevista não encontrada." } as const;
     const erroContaPrevista = erroContaParaBaixa(contaPrevista, { tipoLancamento: dados.tipo, tipoDocumento: dados.tipoDocumento });
     if (erroContaPrevista) return { erro: erroContaPrevista } as const;
+  }
+
+  if (dados.tipoDocumento === "cartao" && dados.cartaoOperadoraId) {
+    const operadora = await db.operadoraCartao.findFirst({ where: { id: dados.cartaoOperadoraId, empresaId } });
+    if (!operadora) return { erro: "Operadora de cartão não encontrada." } as const;
   }
 
   try {
@@ -347,7 +356,7 @@ function montarDadosPersistencia(dados: DadosLancamento, valores: ValidacaoOk) {
       dados.tipoDocumento === "cartao"
         ? {
             create: {
-              operadora: dados.cartaoOperadora || null,
+              operadoraId: dados.cartaoOperadoraId || null,
               numeroCartao: dados.cartaoNumeroCartao || null,
               numeroAutorizacao: dados.cartaoNumeroAutorizacao || null,
               tipoTaxa: dados.cartaoTipoTaxa || null,
@@ -533,6 +542,7 @@ const baixaSchema = z.object({
   multa: z.coerce.number().nonnegative("Multa não pode ser negativa.").optional(),
   desconto: z.coerce.number().nonnegative("Desconto não pode ser negativo.").optional(),
   historicoComplementar: z.string().trim().transform(normalizarTexto).optional(),
+  chequeBaixaIds: z.array(z.string().min(1)),
 });
 
 /** Dá baixa num Lançamento Financeiro `aberto` — grava o ledger e atualiza o saldo via `src/lib/financeiro-ledger.ts`. */
@@ -556,6 +566,7 @@ export async function darBaixaLancamento(
     multa: formData.get("multa") || undefined,
     desconto: formData.get("desconto") || undefined,
     historicoComplementar: formData.get("historicoComplementar"),
+    chequeBaixaIds: formData.getAll("chequeBaixaIds"),
   });
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
@@ -573,18 +584,51 @@ export async function darBaixaLancamento(
   if (exigeCliente && !lancamento.clienteId) return { erro: "Este lançamento não tem cliente definido." };
   if (exigeFornecedor && !lancamento.fornecedorId) return { erro: "Este lançamento não tem fornecedor definido." };
 
+  // Pagar uma despesa repassando cheque(s) de terceiro só existe quando os
+  // dois lados transitam pelo Caixa — ver src/lib/kardex.ts... não, ver
+  // regra ditada pelo usuário: título (cheque) já baixado no Caixa vinculado
+  // a uma despesa também baixada no Caixa.
+  if (parsed.data.chequeBaixaIds.length > 0) {
+    if (lancamento.tipo !== "despesa") return { erro: "Vínculo de cheque de terceiro só se aplica a despesas." };
+    if (conta.tipo !== "caixa") return { erro: "Vínculo de cheque de terceiro só se aplica quando a baixa é feita no Caixa." };
+  }
+
   try {
-    await registrarBaixa({
-      lancamentoId,
-      contaId: parsed.data.contaId,
-      dataBaixa: parsed.data.dataBaixa,
-      juros: new Prisma.Decimal(parsed.data.juros ?? 0),
-      multa: new Prisma.Decimal(parsed.data.multa ?? 0),
-      desconto: new Prisma.Decimal(parsed.data.desconto ?? 0),
-      historicoComplementar: parsed.data.historicoComplementar,
-      usuarioId: permissao.session.user.id,
-      adiantamentoClienteId: exigeCliente ? lancamento.clienteId! : undefined,
-      adiantamentoFornecedorId: exigeFornecedor ? lancamento.fornecedorId! : undefined,
+    await db.$transaction(async (tx) => {
+      const { baixa } = await registrarBaixaNaTransacao(tx, {
+        lancamentoId,
+        contaId: parsed.data.contaId,
+        dataBaixa: parsed.data.dataBaixa,
+        juros: new Prisma.Decimal(parsed.data.juros ?? 0),
+        multa: new Prisma.Decimal(parsed.data.multa ?? 0),
+        desconto: new Prisma.Decimal(parsed.data.desconto ?? 0),
+        historicoComplementar: parsed.data.historicoComplementar,
+        usuarioId: permissao.session.user.id,
+        adiantamentoClienteId: exigeCliente ? lancamento.clienteId! : undefined,
+        adiantamentoFornecedorId: exigeFornecedor ? lancamento.fornecedorId! : undefined,
+      });
+
+      if (parsed.data.chequeBaixaIds.length > 0) {
+        const cheques = await tx.baixa.findMany({
+          where: {
+            id: { in: parsed.data.chequeBaixaIds },
+            estornada: false,
+            utilizadoComoChequeEm: null,
+            conta: { tipo: "caixa" },
+            lancamento: { empresaId, tipo: "receita", tipoDocumento: { in: ["cheque_vista", "cheque_prazo"] } },
+          },
+        });
+        if (cheques.length !== parsed.data.chequeBaixaIds.length) {
+          throw new Error("Um ou mais cheques selecionados não estão mais disponíveis.");
+        }
+        const totalCheques = cheques.reduce((acc, c) => acc.plus(c.valorBaixado), new Prisma.Decimal(0));
+        if (totalCheques.greaterThan(baixa.valorBaixado)) {
+          throw new Error("A soma dos cheques selecionados não pode ser maior que o valor da baixa.");
+        }
+        await tx.chequeTerceiroUtilizado.createMany({
+          data: cheques.map((c) => ({ baixaDespesaId: baixa.id, baixaChequeId: c.id })),
+        });
+      }
     });
   } catch (e) {
     return { erro: e instanceof Error ? e.message : "Não foi possível dar baixa." };
@@ -634,13 +678,26 @@ export async function estornarBaixaLancamento(
   const conta = await db.contaFinanceira.findFirst({ where: { id: parsed.data.contaId, empresaId } });
   if (!conta) return { erro: "Conta financeira não encontrada." };
 
+  // Se essa baixa é ela mesma um cheque de terceiro já repassado pra pagar
+  // uma despesa, não dá pra estornar por aqui — estornaria o recebimento
+  // debaixo do pagamento que já foi feito com ele. Estorna a despesa primeiro.
+  const usadoComoCheque = await db.chequeTerceiroUtilizado.findUnique({ where: { baixaChequeId: baixaAtiva.id } });
+  if (usadoComoCheque) {
+    return { erro: "Este cheque já foi repassado pra pagar uma despesa — estorne a baixa da despesa primeiro." };
+  }
+
   try {
-    await registrarEstorno({
-      baixaId: baixaAtiva.id,
-      contaId: parsed.data.contaId,
-      motivo: parsed.data.motivo,
-      dataEstorno: parsed.data.dataEstorno,
-      alineaDevolucaoId: ehCheque ? parsed.data.alineaDevolucaoId : undefined,
+    await db.$transaction(async (tx) => {
+      await registrarEstornoNaTransacao(tx, {
+        baixaId: baixaAtiva.id,
+        contaId: parsed.data.contaId,
+        motivo: parsed.data.motivo,
+        dataEstorno: parsed.data.dataEstorno,
+        alineaDevolucaoId: ehCheque ? parsed.data.alineaDevolucaoId : undefined,
+      });
+      // Libera de volta o(s) cheque(s) que essa despesa tinha usado — podem
+      // ser vinculados de novo numa próxima baixa deste mesmo lançamento.
+      await tx.chequeTerceiroUtilizado.deleteMany({ where: { baixaDespesaId: baixaAtiva.id } });
     });
   } catch (e) {
     return { erro: e instanceof Error ? e.message : "Não foi possível estornar a baixa." };

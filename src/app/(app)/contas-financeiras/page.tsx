@@ -25,6 +25,7 @@ export default async function ContasFinanceirasPage() {
   const contas = await db.contaFinanceira.findMany({
     where: { empresaId: session.user.empresaId! },
     orderBy: { nome: "asc" },
+    include: { banco: true },
   });
 
   const resumos = await Promise.all(contas.map((c) => obterResumoConciliacao(c.id, c.saldoAtual)));
@@ -33,12 +34,12 @@ export default async function ContasFinanceirasPage() {
     id: c.id,
     nome: c.nome,
     tipoLabel: TIPOS[c.tipo] ?? c.tipo,
-    banco: c.banco ?? "-",
+    banco: c.banco?.nome ?? "-",
     saldoSistema: formatarMoeda(c.saldoAtual),
     totalPendencias: formatarMoeda(resumos[i].totalPendencias),
     saldoBanco: formatarMoeda(resumos[i].saldoBanco),
     ativo: c.ativo,
-    buscaTexto: [c.nome, c.banco, c.numeroConta].filter(Boolean).join(" ").toLowerCase(),
+    buscaTexto: [c.nome, c.banco?.nome, c.numeroConta].filter(Boolean).join(" ").toLowerCase(),
   }));
 
   return (

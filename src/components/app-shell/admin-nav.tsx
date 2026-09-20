@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 const ITEMS = [
   { href: "/admin/grupos", label: "Grupos" },
   { href: "/admin/alineas-devolucao-cheque", label: "Alíneas de Devolução" },
+  { href: "/admin/bandeiras", label: "Bandeiras" },
 ];
 
 export function AdminNav() {

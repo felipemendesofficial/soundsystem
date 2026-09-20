@@ -1,15 +1,27 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxIcon,
+  ComboboxInput,
+  ComboboxInputGroup,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
 import type { ContaFinanceiraFormState } from "./actions";
 
 type Action = (prevState: ContaFinanceiraFormState, formData: FormData) => Promise<ContaFinanceiraFormState>;
+
+type ItemBanco = { id: string; label: string };
 
 const labelClass = "text-[15px] font-semibold";
 const inputClass = "h-11 px-3.5 text-base bg-card";
@@ -23,15 +35,17 @@ const TIPOS = {
 
 export function ContaFinanceiraForm({
   action,
+  bancos,
   defaultValues,
 }: {
   action: Action;
+  bancos: ItemBanco[];
   defaultValues?: {
     tipo: string;
     nome: string;
     numeroConta: string | null;
     agencia: string | null;
-    banco: string | null;
+    bancoId: string | null;
     limiteCredito: string | number | null;
     dataAbertura: string | null; // "YYYY-MM-DD", já formatada
     valorFundoFixo: string | number | null;
@@ -43,6 +57,9 @@ export function ContaFinanceiraForm({
   };
 }) {
   const [state, formAction, pending] = useActionState(action, {});
+  const [banco, setBanco] = useState<ItemBanco | null>(
+    defaultValues?.bancoId ? bancos.find((b) => b.id === defaultValues.bancoId) ?? null : null
+  );
 
   return (
     <form action={formAction} className="max-w-md space-y-6">
@@ -65,10 +82,32 @@ export function ContaFinanceiraForm({
         <Input id="nome" name="nome" required defaultValue={defaultValues?.nome} className={inputClass} />
       </div>
 
+      <input type="hidden" name="bancoId" value={banco?.id ?? ""} />
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
-          <Label htmlFor="banco" className={labelClass}>Banco</Label>
-          <Input id="banco" name="banco" defaultValue={defaultValues?.banco ?? ""} className={inputClass} />
+          <Label className={labelClass}>Banco</Label>
+          <Combobox
+            items={bancos}
+            value={banco}
+            onValueChange={setBanco}
+            itemToStringLabel={(item: ItemBanco) => item.label}
+            itemToStringValue={(item: ItemBanco) => item.id}
+          >
+            <ComboboxInputGroup>
+              <ComboboxInput placeholder="Buscar banco..." />
+              <ComboboxIcon />
+            </ComboboxInputGroup>
+            <ComboboxContent>
+              <ComboboxEmpty>Nenhum banco encontrado.</ComboboxEmpty>
+              <ComboboxList>
+                {(item: ItemBanco) => (
+                  <ComboboxItem key={item.id} value={item}>
+                    {item.label}
+                  </ComboboxItem>
+                )}
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
         </div>
         <div className="space-y-2">
           <Label htmlFor="agencia" className={labelClass}>Agência</Label>

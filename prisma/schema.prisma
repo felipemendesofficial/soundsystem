@@ -156,6 +156,7 @@ model Empresa {
   transferenciasContas     TransferenciaEntreContas[]
   movimentosAplicacao      MovimentoAplicacao[]
   movimentacoesFinanceiras MovimentacaoFinanceira[]
+  operadorasCartao         OperadoraCartao[]
 
   @@map("empresas")
 }
@@ -339,11 +340,17 @@ model UnidadeMedida {
 /// tabela associada a ele (Cliente.tabelaPrecoPadraoId) é sugerida — sempre
 /// editável. Sem versionamento: é um valor mutável, como Servico.precoPadrao.
 model TabelaPreco {
-  id       String   @id @default(uuid())
-  grupoId  String   @map("grupo_id")
-  nome     String
-  ativo    Boolean  @default(true)
-  criadoEm DateTime @default(now()) @map("criado_em")
+  id        String   @id @default(uuid())
+  grupoId   String   @map("grupo_id")
+  nome      String
+  ativo     Boolean  @default(true)
+  // Marca qual tabela vale como referência oficial de preço de venda pra
+  // valorizar o estoque na Home quando o produto não tem venda registrada
+  // ainda — só uma por grupo, sem @unique (evita o gotcha de migração
+  // non-interactive já visto antes); "só uma marcada" é garantido só na
+  // aplicação (desmarca as outras na mesma transação ao marcar uma nova).
+  principal Boolean  @default(false)
+  criadoEm  DateTime @default(now()) @map("criado_em")
 
   grupo    GrupoEmpresarial  @relation(fields: [grupoId], references: [id], onDelete: Restrict)
   itens    ItemTabelaPreco[]
@@ -818,6 +825,110 @@ model AlineaDevolucaoCheque {
   @@map("alineas_devolucao_cheque")
 }
 
+/// Catálogo global de instituições financeiras — fonte de verdade é o Bacen
+/// (Portal de Dados Abertos, lista de participantes do STR), atualizada por
+/// script sob demanda (`scripts/importar-bancos.ts`), não seed estático.
+/// Igual a AlineaDevolucaoCheque: sem grupoId/empresaId, gerenciado só pelo
+/// master em /admin.
+model Banco {
+  id             String   @id @default(uuid())
+  codigoCompe    String?  @unique @map("codigo_compe") // 3 dígitos — nem toda instituição tem (fintechs/IPs só têm ISPB)
+  ispb           String   @unique // 8 dígitos, todo participante do SPB tem
+  nome           String // nome reduzido, ex: "Banco do Brasil"
+  nomeCompleto   String?  @map("nome_completo") // razão social completa
+  participaCompe Boolean  @default(true) @map("participa_compe")
+  ativo          Boolean  @default(true)
+  atualizadoEm   DateTime @updatedAt @map("atualizado_em")
+
+  contas ContaFinanceira[]
+
+  @@index([nome])
+  @@map("bancos")
+}
+
+enum TipoCartaoModalidade {
+  debito
+  credito
+  pre_datado
+  cdc_credito
+}
+
+enum TipoRepasse {
+  dias_corridos
+  mensal
+}
+
+/// Catálogo global de bandeiras de cartão (Visa, Mastercard, etc.) — nomes
+/// padronizados no mercado, não faz sentido cada empresa recriar o mesmo
+/// catálogo. Mesmo padrão de Banco/AlineaDevolucaoCheque: master-only em /admin.
+model Bandeira {
+  id    String  @id @default(uuid())
+  nome  String  @unique
+  ativo Boolean @default(true)
+
+  taxas OperadoraCartaoTaxa[]
+
+  @@map("bandeiras")
+}
+
+/// Operadora processadora de cartão (Cielo, Stone, Rede...) — cadastro por
+/// empresa. Uma Operadora cobre várias Bandeiras (N:N via OperadoraCartaoTaxa);
+/// dados institucionais ficam aqui, taxas ficam na tabela de cruzamento
+/// (variam por Bandeira × Modalidade, nunca só por Operadora).
+model OperadoraCartao {
+  id                  String   @id @default(uuid())
+  empresaId           String   @map("empresa_id")
+  descricao           String
+  dataCadastro        DateTime @default(now()) @map("data_cadastro")
+  email               String?
+  cnpj                String?
+  telefoneSuporte     String?  @map("telefone_suporte")
+  telefoneContato     String?  @map("telefone_contato")
+  telefoneAutorizacao String?  @map("telefone_autorizacao")
+  telefoneManutencao  String?  @map("telefone_manutencao")
+  telefoneAntecipacao String?  @map("telefone_antecipacao")
+  endereco            String?
+  numero              String?
+  complemento         String?
+  bairro              String?
+  cidade              String?
+  uf                  String?
+  cep                 String?
+  pais                String?
+  nomePais            String?  @map("nome_pais")
+  ativo               Boolean  @default(true)
+
+  empresa     Empresa               @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  taxas       OperadoraCartaoTaxa[]
+  dadosCartao DadosCartao[]
+
+  @@index([empresaId])
+  @@map("operadoras_cartao")
+}
+
+/// Cruzamento Operadora × Bandeira × Modalidade — cada combinação tem suas
+/// próprias taxas e prazo de repasse. Só uma linha ativa por combinação
+/// (@@unique) — a Server Action de criação trata a violação com mensagem amigável.
+model OperadoraCartaoTaxa {
+  id                      String               @id @default(uuid())
+  operadoraId             String               @map("operadora_id")
+  bandeiraId              String               @map("bandeira_id")
+  modalidade              TipoCartaoModalidade
+  taxaAvista              Decimal              @map("taxa_avista") @db.Decimal(5, 2)
+  taxaAntecipacao         Decimal              @map("taxa_antecipacao") @db.Decimal(5, 2)
+  taxaParcEstabelecimento Decimal              @map("taxa_parc_estabelecimento") @db.Decimal(5, 2)
+  taxaParcCliente         Decimal              @map("taxa_parc_cliente") @db.Decimal(5, 2)
+  nDias                   Int                  @map("n_dias") // prazo de repasse
+  tipoRepasse             TipoRepasse          @map("tipo_repasse")
+  ativo                   Boolean              @default(true)
+
+  operadora OperadoraCartao @relation(fields: [operadoraId], references: [id])
+  bandeira  Bandeira        @relation(fields: [bandeiraId], references: [id])
+
+  @@unique([operadoraId, bandeiraId, modalidade])
+  @@map("operadora_cartao_taxas")
+}
+
 model ContaFinanceira {
   id                     String    @id @default(uuid())
   empresaId              String    @map("empresa_id")
@@ -825,7 +936,7 @@ model ContaFinanceira {
   nome                   String
   numeroConta            String?   @map("numero_conta")
   agencia                String?
-  banco                  String?
+  bancoId                String?   @map("banco_id")
   limiteCredito          Decimal?  @map("limite_credito") @db.Decimal(14, 2)
   dataAbertura           DateTime? @map("data_abertura")
   valorFundoFixo         Decimal?  @map("valor_fundo_fixo") @db.Decimal(14, 2) // teto, só relevante quando tipo = fundo_fixo
@@ -838,6 +949,7 @@ model ContaFinanceira {
   criadoEm               DateTime  @default(now()) @map("criado_em")
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  banco   Banco?  @relation(fields: [bancoId], references: [id])
 
   lancamentosPrevistos       LancamentoFinanceiro[]      @relation("ContaPrevista")
   baixas                     Baixa[]
@@ -1279,14 +1391,15 @@ model DadosCheque {
 }
 
 model DadosCartao {
-  id                String          @id @default(uuid())
-  lancamentoId      String          @unique @map("lancamento_id")
-  operadora         String?
-  numeroCartao      String?         @map("numero_cartao")
-  numeroAutorizacao String?         @map("numero_autorizacao")
-  tipoTaxa          TipoTaxaCartao? @map("tipo_taxa")
+  id                    String          @id @default(uuid())
+  lancamentoId          String          @unique @map("lancamento_id")
+  operadoraId           String?         @map("operadora_id")
+  numeroCartao          String?         @map("numero_cartao")
+  numeroAutorizacao     String?         @map("numero_autorizacao")
+  tipoTaxa              TipoTaxaCartao? @map("tipo_taxa")
 
   lancamento LancamentoFinanceiro @relation(fields: [lancamentoId], references: [id])
+  operadora  OperadoraCartao?     @relation(fields: [operadoraId], references: [id])
 
   @@map("dados_cartao")
 }

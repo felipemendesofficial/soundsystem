@@ -10,6 +10,10 @@ function formatarData(data: Date) {
   return data.toLocaleDateString("pt-BR", { timeZone: "UTC" });
 }
 
+function formatarMoeda(valor: unknown) {
+  return Number(valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 export default async function BaixaLancamentoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await auth();
@@ -22,7 +26,7 @@ export default async function BaixaLancamentoPage({ params }: { params: Promise<
   if (lancamento.status !== "aberto") redirect(`/lancamentos-financeiros/${id}`);
   if (lancamento.natureza === "prevista") redirect(`/lancamentos-financeiros/${id}`);
 
-  const [contasCadastradas, terceiro, parametro] = await Promise.all([
+  const [contasCadastradas, terceiro, parametro, chequesDisponiveis] = await Promise.all([
     db.contaFinanceira.findMany({ where: { empresaId, ativo: true }, orderBy: { nome: "asc" } }),
     lancamento.tipo === "receita"
       ? lancamento.clienteId
@@ -32,6 +36,19 @@ export default async function BaixaLancamentoPage({ params }: { params: Promise<
         ? db.fornecedor.findFirst({ where: { id: lancamento.fornecedorId, grupoId } })
         : null,
     db.parametroFinanceiro.findUnique({ where: { empresaId } }),
+    // Só faz sentido oferecer pra despesa — filtra por tipo de novo dentro do form/action.
+    lancamento.tipo === "despesa"
+      ? db.baixa.findMany({
+          where: {
+            estornada: false,
+            utilizadoComoChequeEm: null,
+            conta: { tipo: "caixa" },
+            lancamento: { empresaId, tipo: "receita", tipoDocumento: { in: ["cheque_vista", "cheque_prazo"] } },
+          },
+          include: { lancamento: { include: { dadosCheque: true, cliente: true } } },
+          orderBy: { dataBaixa: "desc" },
+        })
+      : [],
   ]);
 
   const contas = contasCadastradas
@@ -39,6 +56,7 @@ export default async function BaixaLancamentoPage({ params }: { params: Promise<
     .map((c) => ({
       id: c.id,
       label: c.nome,
+      tipo: c.tipo,
       adiantamentoCliente: c.adiantamentoCliente,
       adiantamentoFornecedor: c.adiantamentoFornecedor,
     }));
@@ -63,6 +81,11 @@ export default async function BaixaLancamentoPage({ params }: { params: Promise<
         tipoLancamento={lancamento.tipo}
         terceiroLabel={terceiro?.nome ?? null}
         percentualMulta={parametro?.percentualMultaPadrao ? Number(parametro.percentualMultaPadrao) : null}
+        chequesDisponiveis={chequesDisponiveis.map((b) => ({
+          id: b.id,
+          valor: Number(b.valorBaixado),
+          label: `${b.lancamento.dadosCheque?.numeroCheque ? `Cheque ${b.lancamento.dadosCheque.numeroCheque} · ` : ""}${b.lancamento.cliente?.nome ?? b.lancamento.historicoSimplificado} · ${formatarMoeda(b.valorBaixado)}`,
+        }))}
       />
     </div>
   );

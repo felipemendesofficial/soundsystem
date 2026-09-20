@@ -63,7 +63,6 @@ type CamposTexto = {
   chequeCpf: string;
   chequeTelefone: string;
   chequeTerceiro: string;
-  cartaoOperadora: string;
   cartaoNumeroCartao: string;
   cartaoNumeroAutorizacao: string;
 };
@@ -80,7 +79,6 @@ const CAMPOS_CHEQUE = [
 ] as const satisfies readonly (keyof CamposTexto)[];
 
 const CAMPOS_CARTAO = [
-  "cartaoOperadora",
   "cartaoNumeroCartao",
   "cartaoNumeroAutorizacao",
 ] as const satisfies readonly (keyof CamposTexto)[];
@@ -102,7 +100,6 @@ const camposTextoVazios: CamposTexto = {
   chequeCpf: "",
   chequeTelefone: "",
   chequeTerceiro: "",
-  cartaoOperadora: "",
   cartaoNumeroCartao: "",
   cartaoNumeroAutorizacao: "",
 };
@@ -138,7 +135,7 @@ export type LancamentoFinanceiroDefaultValues = {
   chequeCpf: string;
   chequeTelefone: string;
   chequeTerceiro: string;
-  cartaoOperadora: string;
+  cartaoOperadoraId: string | null;
   cartaoNumeroCartao: string;
   cartaoNumeroAutorizacao: string;
   cartaoTipoTaxa: string;
@@ -157,6 +154,7 @@ export function LancamentoFinanceiroForm({
   centroCusto,
   processoItens,
   vendedores,
+  operadorasCartao,
   defaultValues,
 }: {
   action: Action;
@@ -171,6 +169,7 @@ export function LancamentoFinanceiroForm({
   centroCusto: ItemRateio[];
   processoItens: { id: string; label: string; processoId: string }[];
   vendedores: ItemRateio[];
+  operadorasCartao: ItemRateio[];
   defaultValues?: LancamentoFinanceiroDefaultValues;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
@@ -187,6 +186,7 @@ export function LancamentoFinanceiroForm({
   const [contaPrevistaId, setContaPrevistaId] = useState<string | null>(defaultValues?.contaPrevistaId ?? null);
   const [documentoFisico, setDocumentoFisico] = useState(defaultValues?.documentoFisico ?? false);
   const [cartaoTipoTaxa, setCartaoTipoTaxa] = useState<string>(defaultValues?.cartaoTipoTaxa ?? "");
+  const [cartaoOperadoraId, setCartaoOperadoraId] = useState<string | null>(defaultValues?.cartaoOperadoraId ?? null);
 
   function selecionarTipoDocumento(novoTipo: string) {
     setTipoDocumento((atual) => {
@@ -199,6 +199,7 @@ export function LancamentoFinanceiroForm({
       if (atual === "cartao" && novoTipo !== "cartao") {
         setCampos((c) => ({ ...c, ...Object.fromEntries(CAMPOS_CARTAO.map((campo) => [campo, ""])) }));
         setCartaoTipoTaxa("");
+        setCartaoOperadoraId(null);
       }
       return novoTipo;
     });
@@ -221,7 +222,6 @@ export function LancamentoFinanceiroForm({
     chequeCpf: defaultValues?.chequeCpf ?? camposTextoVazios.chequeCpf,
     chequeTelefone: defaultValues?.chequeTelefone ?? camposTextoVazios.chequeTelefone,
     chequeTerceiro: defaultValues?.chequeTerceiro ?? camposTextoVazios.chequeTerceiro,
-    cartaoOperadora: defaultValues?.cartaoOperadora ?? camposTextoVazios.cartaoOperadora,
     cartaoNumeroCartao: defaultValues?.cartaoNumeroCartao ?? camposTextoVazios.cartaoNumeroCartao,
     cartaoNumeroAutorizacao: defaultValues?.cartaoNumeroAutorizacao ?? camposTextoVazios.cartaoNumeroAutorizacao,
   }));
@@ -364,6 +364,7 @@ export function LancamentoFinanceiroForm({
         <input type="hidden" name="portadorId" value={portadorId ?? ""} />
         <input type="hidden" name="contaPrevistaId" value={contaPrevistaId ?? ""} />
         <input type="hidden" name="cartaoTipoTaxa" value={cartaoTipoTaxa} />
+        <input type="hidden" name="cartaoOperadoraId" value={cartaoOperadoraId ?? ""} />
         <input type="hidden" name="rateioPlano" value={rateioPlanoSerializado} />
         <input type="hidden" name="rateioProcesso" value={rateioProcessoSerializado} />
         <input type="hidden" name="retencoes" value={retencoesSerializadas} />
@@ -586,7 +587,28 @@ export function LancamentoFinanceiroForm({
         {tipoDocumento === "cartao" && (
           <div className="space-y-3 rounded-lg border border-border bg-card p-4">
             <Label className={labelClass}>Dados do Cartão</Label>
-            <Input name="cartaoOperadora" placeholder="Operadora" className="h-10 bg-background" {...campoTexto("cartaoOperadora")} />
+            <Combobox
+              items={operadorasCartao}
+              value={operadorasCartao.find((o) => o.id === cartaoOperadoraId) ?? null}
+              onValueChange={(item: ItemRateio | null) => setCartaoOperadoraId(item?.id ?? null)}
+              itemToStringLabel={(item: ItemRateio) => item.label}
+              itemToStringValue={(item: ItemRateio) => item.id}
+            >
+              <ComboboxInputGroup>
+                <ComboboxInput placeholder="Buscar operadora..." />
+                <ComboboxIcon />
+              </ComboboxInputGroup>
+              <ComboboxContent>
+                <ComboboxEmpty>Nenhuma operadora cadastrada.</ComboboxEmpty>
+                <ComboboxList>
+                  {(item: ItemRateio) => (
+                    <ComboboxItem key={item.id} value={item}>
+                      {item.label}
+                    </ComboboxItem>
+                  )}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
             <Input name="cartaoNumeroCartao" placeholder="Número do Cartão" className="h-10 bg-background" {...campoTexto("cartaoNumeroCartao")} />
             <Input name="cartaoNumeroAutorizacao" placeholder="Número de Autorização" className="h-10 bg-background" {...campoTexto("cartaoNumeroAutorizacao")} />
             <div className="space-y-1">

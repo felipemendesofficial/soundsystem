@@ -18,6 +18,22 @@ export async function obterUltimosPrecosVenda(empresaId: string): Promise<Map<st
 }
 
 /**
+ * Preços da Tabela de Preço marcada como `principal` do grupo (só uma por
+ * grupo, garantido na aplicação — ver `tabela-precos/actions.ts`) — usado
+ * como 2º critério (depois do último preço de venda) pra valorizar o
+ * estoque a preço de venda na Home. Devolve mapa vazio se nenhuma tabela
+ * estiver marcada como principal.
+ */
+export async function obterPrecosDaTabelaPrincipal(grupoId: string): Promise<Map<string, number>> {
+  const tabela = await db.tabelaPreco.findFirst({
+    where: { grupoId, principal: true },
+    include: { itens: true },
+  });
+  if (!tabela) return new Map();
+  return new Map(tabela.itens.map((i) => [i.produtoId, Number(i.preco)]));
+}
+
+/**
  * Custo médio "combinado" de um produto entre todos os depósitos — só para
  * exibir a margem estimada na tela de gestão de tabela de preços; não é usado
  * em nenhum cálculo de estoque/Kardex.

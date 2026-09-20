@@ -18,6 +18,7 @@ const itemSchema = z.object({
 const schema = z.object({
   nome: z.string().trim().min(1, "Informe o nome.").transform(normalizarTexto),
   ativo: z.enum(["on"]).nullish(),
+  principal: z.enum(["on"]).nullish(),
   itens: z.string().transform((valor, ctx) => {
     let parsedJson: unknown;
     try {
@@ -48,6 +49,7 @@ function toData(formData: FormData) {
   return schema.safeParse({
     nome: formData.get("nome"),
     ativo: formData.get("ativo"),
+    principal: formData.get("principal"),
     itens: formData.get("itens"),
   });
 }
@@ -58,21 +60,27 @@ export async function criarTabelaPreco(
 ): Promise<TabelaPrecoFormState> {
   const permissao = await exigirPermissao();
   if ("erro" in permissao) return permissao;
+  const grupoId = permissao.session.user.grupoId!;
 
   const parsed = toData(formData);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  const principal = parsed.data.principal === "on";
 
   let tabela;
   try {
-    tabela = await db.tabelaPreco.create({
-      data: {
-        nome: parsed.data.nome,
-        ativo: parsed.data.ativo === "on",
-        grupoId: permissao.session.user.grupoId!,
-        itens: {
-          create: parsed.data.itens.map((i) => ({ produtoId: i.produtoId, preco: i.preco })),
+    tabela = await db.$transaction(async (tx) => {
+      if (principal) await tx.tabelaPreco.updateMany({ where: { grupoId, principal: true }, data: { principal: false } });
+      return tx.tabelaPreco.create({
+        data: {
+          nome: parsed.data.nome,
+          ativo: parsed.data.ativo === "on",
+          principal,
+          grupoId,
+          itens: {
+            create: parsed.data.itens.map((i) => ({ produtoId: i.produtoId, preco: i.preco })),
+          },
         },
-      },
+      });
     });
   } catch {
     return { erro: "Já existe uma tabela de preço com esse nome." };
@@ -92,14 +100,18 @@ export async function atualizarTabelaPreco(
 
   const parsed = toData(formData);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  const grupoId = permissao.session.user.grupoId!;
+  const principal = parsed.data.principal === "on";
 
   try {
     await db.$transaction(async (tx) => {
       const tabela = await tx.tabelaPreco.findFirst({
-        where: { id, grupoId: permissao.session.user.grupoId! },
+        where: { id, grupoId },
         select: { id: true },
       });
       if (!tabela) throw new Error("NAO_ENCONTRADA");
+
+      if (principal) await tx.tabelaPreco.updateMany({ where: { grupoId, principal: true, id: { not: id } }, data: { principal: false } });
 
       await tx.itemTabelaPreco.deleteMany({ where: { tabelaPrecoId: id } });
       await tx.tabelaPreco.update({
@@ -107,6 +119,7 @@ export async function atualizarTabelaPreco(
         data: {
           nome: parsed.data.nome,
           ativo: parsed.data.ativo === "on",
+          principal,
           itens: {
             create: parsed.data.itens.map((i) => ({ produtoId: i.produtoId, preco: i.preco })),
           },

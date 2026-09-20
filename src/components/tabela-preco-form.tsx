@@ -34,6 +34,7 @@ export function TabelaPrecoForm({
   defaultValues?: {
     nome: string;
     ativo: boolean;
+    principal: boolean;
     precos: Record<string, string>;
   };
 }) {
@@ -77,6 +78,17 @@ export function TabelaPrecoForm({
       <div className="flex items-center gap-3">
         <Checkbox id="ativo" name="ativo" defaultChecked={defaultValues?.ativo ?? true} />
         <Label htmlFor="ativo" className={labelClass}>Ativa</Label>
+      </div>
+
+      <div className="space-y-1">
+        <div className="flex items-center gap-3">
+          <Checkbox id="principal" name="principal" defaultChecked={defaultValues?.principal ?? false} />
+          <Label htmlFor="principal" className={labelClass}>Tabela principal</Label>
+        </div>
+        <p className="text-[13px] text-muted-foreground">
+          Usada para valorizar o estoque na Home quando o produto ainda não tem venda registrada. Só uma tabela pode
+          ser a principal — marcar esta desmarca automaticamente qualquer outra.
+        </p>
       </div>
 
       <div className="space-y-3">

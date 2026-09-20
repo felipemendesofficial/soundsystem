@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
  * uma opção cadastrada (padrão explícito de Processo continua tendo prioridade).
  */
 export async function obterDadosFormularioLancamento(grupoId: string, empresaId: string) {
-  const [clientes, fornecedores, portadores, contasFinanceiras, processos, planoFinanceiro, centroCusto, processoItens, vendedores] =
+  const [clientes, fornecedores, portadores, contasFinanceiras, processos, planoFinanceiro, centroCusto, processoItens, vendedores, operadorasCartao] =
     await Promise.all([
       db.cliente.findMany({ where: { grupoId }, orderBy: { nome: "asc" } }),
       db.fornecedor.findMany({ where: { grupoId }, orderBy: { nome: "asc" } }),
@@ -20,6 +20,7 @@ export async function obterDadosFormularioLancamento(grupoId: string, empresaId:
         orderBy: { codigo: "asc" },
       }),
       db.vendedor.findMany({ where: { grupoId, ativo: true }, orderBy: { nome: "asc" } }),
+      db.operadoraCartao.findMany({ where: { empresaId, ativo: true }, orderBy: { descricao: "asc" } }),
     ]);
 
   const processoPadrao = processos.find((p) => p.padrao) ?? (processos.length === 1 ? processos[0] : undefined);
@@ -48,5 +49,6 @@ export async function obterDadosFormularioLancamento(grupoId: string, empresaId:
     centroCusto: centroCusto.map((c) => ({ id: c.id, label: `${c.codigo} — ${c.descricao}` })),
     processoItens: processoItens.map((i) => ({ id: i.id, label: `${i.codigo} — ${i.descricao}`, processoId: i.processoId })),
     vendedores: vendedores.map((v) => ({ id: v.id, label: v.nome })),
+    operadorasCartao: operadorasCartao.map((o) => ({ id: o.id, label: o.descricao })),
   };
 }

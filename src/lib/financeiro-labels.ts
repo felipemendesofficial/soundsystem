@@ -17,3 +17,17 @@ export const TIPOS_TAXA_CARTAO_LABEL: Record<string, string> = {
   parc_estabelecimento: "Parcelado — Estabelecimento",
   parc_cliente: "Parcelado — Cliente",
 };
+
+/** Modalidade de cartão nas taxas de Operadora × Bandeira. */
+export const TIPOS_CARTAO_MODALIDADE_LABEL: Record<string, string> = {
+  debito: "Débito",
+  credito: "Crédito",
+  pre_datado: "Pré-datado",
+  cdc_credito: "CDC-Crédito",
+};
+
+/** Prazo de repasse das taxas de Operadora de Cartão. */
+export const TIPOS_REPASSE_LABEL: Record<string, string> = {
+  dias_corridos: "Dias Corridos",
+  mensal: "Mensal",
+};

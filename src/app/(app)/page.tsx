@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { podeGerenciarOrcamento, podeGerenciarFinanceiro, podeVerCusto } from "@/lib/permissions";
 import { obterResumoConciliacao } from "@/lib/conciliacao";
-import { obterUltimosPrecosVenda } from "@/lib/tabela-preco";
+import { obterUltimosPrecosVenda, obterPrecosDaTabelaPrincipal } from "@/lib/tabela-preco";
 import { cn } from "@/lib/utils";
 
 function formatarMoeda(valor: number) {
@@ -165,22 +165,32 @@ async function obterVisaoGeralVendas(empresaId: string) {
   };
 }
 
-async function obterVisaoGeralEstoque(empresaId: string) {
-  const [totalProdutosAgregado, precos] = await Promise.all([
+/**
+ * Preço de venda por produto, em ordem de prioridade (pedido do usuário):
+ * (1) último preço de venda registrado, (2) preço na Tabela de Preço
+ * marcada como principal, (3) sem nenhum dos dois, usa o próprio custo
+ * (equivalente a "sem margem" — só pra não subestimar o valor do estoque
+ * a zero quando não há preço de venda algum pra esse produto).
+ */
+async function obterVisaoGeralEstoque(empresaId: string, grupoId: string) {
+  const [totalProdutosAgregado, precosVenda, precosTabelaPrincipal] = await Promise.all([
     db.produtoEstoque.groupBy({
       by: ["produtoId"],
       where: { empresaId },
       _sum: { quantidadeSaldo: true, valorTotalSaldo: true },
     }),
     obterUltimosPrecosVenda(empresaId),
+    obterPrecosDaTabelaPrincipal(grupoId),
   ]);
 
   let valorTotalCusto = 0;
   let valorTotalVenda = 0;
   for (const item of totalProdutosAgregado) {
-    valorTotalCusto += Number(item._sum.valorTotalSaldo ?? 0);
-    const precoVenda = precos.get(item.produtoId) ?? 0;
-    valorTotalVenda += Number(item._sum.quantidadeSaldo ?? 0) * precoVenda;
+    const custoTotal = Number(item._sum.valorTotalSaldo ?? 0);
+    valorTotalCusto += custoTotal;
+
+    const precoVenda = precosVenda.get(item.produtoId) ?? precosTabelaPrincipal.get(item.produtoId);
+    valorTotalVenda += precoVenda !== undefined ? Number(item._sum.quantidadeSaldo ?? 0) * precoVenda : custoTotal;
   }
 
   return { valorTotalCusto, valorTotalVenda };
@@ -260,7 +270,7 @@ export default async function HomePage() {
   let visaoGeralEstoque: Awaited<ReturnType<typeof obterVisaoGeralEstoque>> | null = null;
   let visaoGeralVendas: Awaited<ReturnType<typeof obterVisaoGeralVendas>> | null = null;
   if (podeVerCusto(perfil)) {
-    visaoGeralEstoque = await obterVisaoGeralEstoque(empresaId);
+    visaoGeralEstoque = await obterVisaoGeralEstoque(empresaId, grupoId);
     visaoGeralVendas = await obterVisaoGeralVendas(empresaId);
   }
 

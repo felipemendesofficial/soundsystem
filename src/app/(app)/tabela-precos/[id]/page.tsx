@@ -33,7 +33,7 @@ export default async function EditarTabelaPrecoPage({ params }: { params: Promis
       <TabelaPrecoForm
         action={atualizarTabelaPreco.bind(null, id)}
         produtos={produtosPreco}
-        defaultValues={{ nome: tabela.nome, ativo: tabela.ativo, precos }}
+        defaultValues={{ nome: tabela.nome, ativo: tabela.ativo, principal: tabela.principal, precos }}
       />
     </div>
   );

@@ -5,7 +5,24 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { normalizarTexto } from "@/lib/texto";
+
+/**
+ * O único índice único de Produto é `[grupoId, sku]` — então um P2002 aqui
+ * sempre é mesmo SKU duplicado. Qualquer outro erro (ex.: P2003, FK de
+ * categoriaId/unidadeMedidaId inválida — pode acontecer com uma página
+ * restaurada do cache do navegador, algo mais comum no celular) NÃO é SKU
+ * duplicado; mostrar essa mensagem errada só confunde quem tá tentando
+ * corrigir o problema de verdade.
+ */
+function erroAoSalvarProduto(error: unknown): string {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === "P2002") return "Já existe um produto com esse SKU.";
+    if (error.code === "P2003") return "Categoria ou Unidade de Medida inválida — atualize a página e tente novamente.";
+  }
+  return "Não foi possível salvar o produto. Tente novamente.";
+}
 
 const schema = z.object({
   sku: z.string().trim().min(1, "Informe o SKU.").transform(normalizarTexto),
@@ -59,8 +76,8 @@ export async function criarProduto(_prev: ProdutoFormState, formData: FormData):
         grupoId: session.user.grupoId!,
       },
     });
-  } catch {
-    return { erro: "Já existe um produto com esse SKU." };
+  } catch (error) {
+    return { erro: erroAoSalvarProduto(error) };
   }
 
   revalidatePath("/produtos");
@@ -91,8 +108,8 @@ export async function atualizarProduto(
       },
     });
     if (count === 0) return { erro: "Produto não encontrado." };
-  } catch {
-    return { erro: "Já existe um produto com esse SKU." };
+  } catch (error) {
+    return { erro: erroAoSalvarProduto(error) };
   }
 
   revalidatePath("/produtos");

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Landmark, Users, Wallet, Layers, GitBranch, Receipt, CalendarCheck, ArrowLeftRight, ReceiptText, TrendingUp, Sliders } from "lucide-react";
+import { Landmark, Users, Wallet, Layers, GitBranch, Receipt, CalendarCheck, ArrowLeftRight, ReceiptText, TrendingUp, Sliders, CreditCard } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { podeGerenciarFinanceiro } from "@/lib/permissions";
 
@@ -11,6 +11,7 @@ const SECOES = [
   { href: "/aplicacoes-financeiras", label: "Aplicações Financeiras", descricao: "Aplicação, resgate e rendimento", icon: TrendingUp },
   { href: "/recolhimentos-retencao", label: "Recolhimento de Retenção", descricao: "Agrupa e paga tributos retidos", icon: ReceiptText },
   { href: "/portadores", label: "Portadores", descricao: "Quem carrega boletos/cheques físicos", icon: Users },
+  { href: "/operadoras-cartao", label: "Operadoras de Cartão", descricao: "Taxas por bandeira e modalidade", icon: CreditCard },
   { href: "/planos-financeiros", label: "Plano Financeiro", descricao: "Plano de contas de receitas e despesas", icon: Wallet },
   { href: "/centros-custo", label: "Centro de Custo", descricao: "Rateio por área/departamento", icon: Layers },
   { href: "/processos", label: "Processos", descricao: "Rateio por processo/projeto", icon: GitBranch },
