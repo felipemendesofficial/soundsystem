@@ -1,9 +1,10 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { podeGerenciarFinanceiro } from "@/lib/permissions";
 import { Badge } from "@/components/ui/badge";
-import { obterUltimoFechamentoAtivo, calcularProximoDiaAFechar } from "@/lib/financeiro-ledger";
+import { obterUltimoFechamentoAtivo, obterDataInicioControle, calcularProximoDiaAFechar, hojeUTC } from "@/lib/financeiro-ledger";
 import { FecharDiaBotao, ReabrirDiaBotao } from "./fechamento-botoes";
 
 function formatarData(data: Date) {
@@ -15,11 +16,12 @@ export default async function FechamentoDiarioPage() {
   if (!session?.user || !podeGerenciarFinanceiro(session.user.perfil)) redirect("/");
   const empresaId = session.user.empresaId!;
 
-  const ultimoFechamento = await obterUltimoFechamentoAtivo(db, empresaId);
-  const proximoDia = calcularProximoDiaAFechar(ultimoFechamento);
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  const haAlgoPraFechar = proximoDia.getTime() <= hoje.getTime();
+  const [ultimoFechamento, dataInicioControle] = await Promise.all([
+    obterUltimoFechamentoAtivo(db, empresaId),
+    obterDataInicioControle(db, empresaId),
+  ]);
+  const proximoDia = calcularProximoDiaAFechar(ultimoFechamento, dataInicioControle);
+  const haAlgoPraFechar = proximoDia.getTime() <= hojeUTC().getTime();
 
   const historico = await db.fechamentoDiario.findMany({
     where: { empresaId },
@@ -41,7 +43,11 @@ export default async function FechamentoDiarioPage() {
             <ReabrirDiaBotao />
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">Nenhum fechamento ainda.</p>
+          <p className="text-sm text-muted-foreground">
+            {dataInicioControle
+              ? `Nenhum fechamento ainda — controle configurado pra começar em ${formatarData(dataInicioControle)}.`
+              : "Nenhum fechamento ainda."}
+          </p>
         )}
 
         {haAlgoPraFechar ? (
@@ -50,6 +56,16 @@ export default async function FechamentoDiarioPage() {
           <p className="text-sm text-muted-foreground">O dia de hoje já está fechado.</p>
         )}
       </div>
+
+      {!ultimoFechamento && !dataInicioControle && (
+        <p className="text-xs text-muted-foreground">
+          Vai lançar retroativo? Configure a{" "}
+          <Link href="/parametros-financeiros" className="font-medium text-primary underline">
+            data de início do controle financeiro
+          </Link>{" "}
+          antes de começar a fechar dias.
+        </p>
+      )}
 
       <div className="space-y-2">
         <h2 className="text-base font-semibold">Histórico</h2>

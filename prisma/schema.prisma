@@ -989,6 +989,11 @@ model ParametroFinanceiro {
   // Sugestão pré-preenchida de multa por atraso na Baixa (%) — sempre editável
   // linha a linha; null usa o padrão do código (2%, teto do CDC art. 52 §1º).
   percentualMultaPadrao Decimal? @map("percentual_multa_padrao") @db.Decimal(5, 2)
+  // "Chão" da sequência de Fechamento Diário — enquanto nenhum FechamentoDiario
+  // existir ainda, é a partir dela (não de hoje) que "Fechar o dia" e o limite
+  // inferior de data de lançamento passam a valer. Permite iniciar o controle
+  // com lançamentos retroativos e ir fechando os dias até alcançar hoje.
+  dataInicioControle    DateTime? @map("data_inicio_controle")
   atualizadoEm          DateTime @updatedAt @map("atualizado_em")
 
   empresa         Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)

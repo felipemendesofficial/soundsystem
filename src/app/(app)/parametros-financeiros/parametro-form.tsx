@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { salvarParametroFinanceiro, type ParametroFinanceiroFormState } from "./actions";
 
 type Action = (prevState: ParametroFinanceiroFormState, formData: FormData) => Promise<ParametroFinanceiroFormState>;
@@ -15,14 +16,17 @@ const inputClass = "h-11 px-3.5 text-base bg-card";
 
 export function ParametroForm({
   planos,
+  dataInicioControleTravada,
   defaultValues,
 }: {
   planos: { id: string; label: string }[];
+  dataInicioControleTravada: boolean;
   defaultValues: {
     planoAplicacaoId: string | null;
     planoResgateId: string | null;
     planoRendimentoId: string | null;
     percentualMultaPadrao: string | null;
+    dataInicioControle: string | null;
   };
 }) {
   const [state, formAction, pending] = useActionState<ParametroFinanceiroFormState, FormData>(
@@ -38,6 +42,23 @@ export function ParametroForm({
 
   return (
     <form action={formAction} className="max-w-md space-y-6">
+      <div className="space-y-2">
+        <Label htmlFor="dataInicioControle" className={labelClass}>Início do Controle Financeiro</Label>
+        <Input
+          id="dataInicioControle"
+          name="dataInicioControle"
+          type="date"
+          readOnly={dataInicioControleTravada}
+          defaultValue={defaultValues.dataInicioControle ?? ""}
+          className={cn(inputClass, dataInicioControleTravada && "opacity-60")}
+        />
+        <p className="text-xs text-muted-foreground">
+          {dataInicioControleTravada
+            ? "Não pode mais ser alterada — já existe pelo menos um dia fechado."
+            : "A partir dessa data o Fechamento Diário passa a controlar a sequência (dá pra lançar retroativo até ela e ir fechando os dias até chegar em hoje). Deixe em branco pra começar em hoje."}
+        </p>
+      </div>
+
       <div className="space-y-2">
         <Label htmlFor="planoAplicacaoId" className={labelClass}>Plano — Aplicação Financeira</Label>
         <Select name="planoAplicacaoId" defaultValue={defaultValues.planoAplicacaoId ?? undefined} items={itensPlanos}>

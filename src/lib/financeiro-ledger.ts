@@ -14,14 +14,36 @@ import { REGRAS_TRANSFERENCIA, erroContaOrigemTransferencia, erroContaDestinoTra
 import { erroContaComumParaAplicacao } from "@/lib/regras-conta-aplicacao";
 
 /**
- * Início do dia (00:00) na mesma data-calendário de `data`, ignorando hora —
- * `FechamentoDiario.data` e as comparações de janela de lançamento trabalham
- * só em granularidade de dia.
+ * Início do dia (00:00 UTC) na mesma data-calendário de `data`, ignorando
+ * hora — `FechamentoDiario.data` e as comparações de janela de lançamento
+ * trabalham só em granularidade de dia. Usa getters/`Date.UTC` em UTC, nunca
+ * hora local: toda data de negócio aqui (dataBaixa, dataEstorno, `data` de
+ * Transferência/Aplicação, `dataInicioControle`, `FechamentoDiario.data`) vem
+ * de um `<input type="date">` — uma string "YYYY-MM-DD" que `z.coerce.date()`
+ * sempre interpreta como meia-noite UTC (regra do próprio JS pra strings
+ * ISO só-de-data). Extrair essa data com getters LOCAIS (`getDate()` etc.)
+ * quebra em qualquer fuso atrás de UTC — inclusive o do Brasil (produção
+ * roda com `TZ=America/Sao_Paulo`, UTC-3): meia-noite UTC de um dia é
+ * 21h da véspera em horário local, então `setHours(0,0,0,0)` (local)
+ * devolvia sistematicamente o dia ANTERIOR ao que o usuário digitou —
+ * bug real encontrado ao testar `dataInicioControle` (ver [[multi-tenant-grupo-empresa]]).
+ * "Hoje" (que não vem de uma string, é o instante atual) usa `hojeUTC()`
+ * abaixo, não esta função, justamente por precisar do dia local de verdade.
  */
 function inicioDoDia(data: Date): Date {
-  const copia = new Date(data);
-  copia.setHours(0, 0, 0, 0);
-  return copia;
+  return new Date(Date.UTC(data.getUTCFullYear(), data.getUTCMonth(), data.getUTCDate()));
+}
+
+/**
+ * "Hoje" no fuso local do servidor (Brasil em produção), reancorado como
+ * meia-noite UTC — mesma convenção de `inicioDoDia`, mas a fonte do dia-
+ * calendário aqui é o instante atual (getters locais, não UTC), já que o
+ * "hoje" do usuário é sempre o dia local dele, não o dia UTC (podem
+ * divergir à noite: 23h de um dia no Brasil já é o dia seguinte em UTC).
+ */
+export function hojeUTC(): Date {
+  const agora = new Date();
+  return new Date(Date.UTC(agora.getFullYear(), agora.getMonth(), agora.getDate()));
 }
 
 /** Fechamento diário mais recente ainda ativo (não reaberto) de uma empresa, ou `null` se nenhum existir ainda. */
@@ -36,20 +58,48 @@ export async function obterUltimoFechamentoAtivo(
 }
 
 /**
- * Lançamentos financeiros só podem ocorrer entre `(último fechamento, hoje]`
- * — nunca no futuro, nunca num dia já fechado. Sem tela de Fechamento Diário
- * ainda (leva futura), `ultimoFechamento` é sempre `null` pra empresa nova,
- * então a regra vira, na prática, só "não pode ser no futuro".
+ * "Chão" configurável da sequência de Fechamento Diário (`ParametroFinanceiro.dataInicioControle`)
+ * — só importa enquanto nenhum `FechamentoDiario` existe ainda; uma vez que o
+ * primeiro dia é fechado, `ultimoFechamento` passa a mandar sozinho. `null`
+ * quando a empresa nunca configurou (comportamento antigo: começa em hoje).
  */
-export function validarDataDeMovimento(data: Date, ultimoFechamento: FechamentoDiario | null) {
+export async function obterDataInicioControle(
+  tx: Prisma.TransactionClient | typeof db,
+  empresaId: string
+): Promise<Date | null> {
+  const parametro = await tx.parametroFinanceiro.findUnique({
+    where: { empresaId },
+    select: { dataInicioControle: true },
+  });
+  return parametro?.dataInicioControle ?? null;
+}
+
+/**
+ * Lançamentos financeiros só podem ocorrer entre `(último fechamento, hoje]`
+ * — nunca no futuro, nunca num dia já fechado. Antes do primeiro fechamento,
+ * o limite inferior passa a ser `dataInicioControle` (quando configurada) em
+ * vez de aberto pra qualquer data passada — permite lançar retroativo até
+ * essa data, mas não antes dela.
+ */
+export function validarDataDeMovimento(
+  data: Date,
+  ultimoFechamento: FechamentoDiario | null,
+  dataInicioControle?: Date | null
+) {
   const dia = inicioDoDia(data);
-  const hoje = inicioDoDia(new Date());
+  const hoje = hojeUTC();
 
   if (dia.getTime() > hoje.getTime()) {
     throw new Error("A data não pode ser no futuro.");
   }
-  if (ultimoFechamento && dia.getTime() <= inicioDoDia(ultimoFechamento.data).getTime()) {
-    throw new Error("A data já está dentro de um período fechado.");
+  if (ultimoFechamento) {
+    if (dia.getTime() <= inicioDoDia(ultimoFechamento.data).getTime()) {
+      throw new Error("A data já está dentro de um período fechado.");
+    }
+  } else if (dataInicioControle && dia.getTime() < inicioDoDia(dataInicioControle).getTime()) {
+    throw new Error(
+      `A data não pode ser anterior ao início do controle financeiro (${inicioDoDia(dataInicioControle).toLocaleDateString("pt-BR", { timeZone: "UTC" })}).`
+    );
   }
 }
 
@@ -84,7 +134,7 @@ export async function registrarBaixaNaTransacao(
   }
 
   const ultimoFechamento = await obterUltimoFechamentoAtivo(tx, lancamento.empresaId);
-  validarDataDeMovimento(input.dataBaixa, ultimoFechamento);
+  validarDataDeMovimento(input.dataBaixa, ultimoFechamento, await obterDataInicioControle(tx, lancamento.empresaId));
 
   // Retenção é imposto retido na fonte: some ao rateio do lançamento, mas
   // nunca chega a transitar pela conta financeira — só o valor líquido é
@@ -268,7 +318,7 @@ export async function registrarEstornoNaTransacao(
   }
 
   const ultimoFechamento = await obterUltimoFechamentoAtivo(tx, baixa.lancamento.empresaId);
-  validarDataDeMovimento(input.dataEstorno, ultimoFechamento);
+  validarDataDeMovimento(input.dataEstorno, ultimoFechamento, await obterDataInicioControle(tx, baixa.lancamento.empresaId));
 
   // Mesma trava de linha de `registrarBaixaNaTransacao` — sem ::uuid, a
   // coluna é TEXT (lição da leva anterior: comparar text = uuid não existe).
@@ -391,14 +441,19 @@ export async function registrarEstorno(
 
 /**
  * Próximo dia que "Fechar o dia" fecharia (`último fechamento ativo + 1
- * dia`, ou hoje se não houver nenhum ainda) — pura, sem tocar no banco, pra
- * ser reusada tanto por `fecharDia` quanto pela tela (decidir se mostra o
- * botão e qual data exibir nele) sem duplicar a conta.
+ * dia`; se não houver nenhum ainda, `dataInicioControle` quando configurada,
+ * senão hoje — comportamento antigo) — pura, sem tocar no banco, pra ser
+ * reusada tanto por `fecharDia` quanto pela tela (decidir se mostra o botão
+ * e qual data exibir nele) sem duplicar a conta.
  */
-export function calcularProximoDiaAFechar(ultimoFechamento: FechamentoDiario | null): Date {
-  return ultimoFechamento
-    ? new Date(inicioDoDia(ultimoFechamento.data).getTime() + 86400000)
-    : inicioDoDia(new Date());
+export function calcularProximoDiaAFechar(
+  ultimoFechamento: FechamentoDiario | null,
+  dataInicioControle?: Date | null
+): Date {
+  if (ultimoFechamento) {
+    return new Date(inicioDoDia(ultimoFechamento.data).getTime() + 86400000);
+  }
+  return dataInicioControle ? inicioDoDia(dataInicioControle) : hojeUTC();
 }
 
 /**
@@ -411,14 +466,24 @@ export async function fecharDia(
   usuarioId: string
 ): Promise<FechamentoDiario> {
   const ultimo = await obterUltimoFechamentoAtivo(tx, empresaId);
-  const proximo = calcularProximoDiaAFechar(ultimo);
-  const hoje = inicioDoDia(new Date());
+  const dataInicioControle = await obterDataInicioControle(tx, empresaId);
+  const proximo = calcularProximoDiaAFechar(ultimo, dataInicioControle);
+  const hoje = hojeUTC();
 
   if (proximo.getTime() > hoje.getTime()) {
     throw new Error("O dia de hoje já está fechado.");
   }
 
-  const fechamento = await tx.fechamentoDiario.create({ data: { empresaId, data: proximo, fechadoPorId: usuarioId } });
+  // Um dia já fechado antes e depois reaberto deixa pra trás uma linha
+  // inativa (`ativo: false`) pra mesma (empresaId, data) — reabrir nunca
+  // apaga o histórico. Fechar esse mesmo dia de novo precisa reativar essa
+  // linha (upsert), não criar outra — um `create` puro bate direto no
+  // `@@unique([empresaId, data])` e quebra com "Unique constraint failed".
+  const fechamento = await tx.fechamentoDiario.upsert({
+    where: { empresaId_data: { empresaId, data: proximo } },
+    create: { empresaId, data: proximo, fechadoPorId: usuarioId },
+    update: { ativo: true, fechadoEm: new Date(), fechadoPorId: usuarioId, reabertoEm: null, reabertoPorId: null },
+  });
 
   // Se o dia fechado é o último do mês (o próximo já vira dia 1), tira o
   // snapshot mensal de saldo de cada conta — chamado aqui, não numa tela à
@@ -517,7 +582,7 @@ export async function registrarTransferenciaNaTransacao(
   }
 
   const ultimoFechamento = await obterUltimoFechamentoAtivo(tx, input.empresaId);
-  validarDataDeMovimento(input.data, ultimoFechamento);
+  validarDataDeMovimento(input.data, ultimoFechamento, await obterDataInicioControle(tx, input.empresaId));
 
   // Trava as contas envolvidas em ordem determinística (menor id primeiro)
   // pra evitar deadlock entre transferências concorrentes em sentidos
@@ -684,7 +749,7 @@ export async function registrarEstornoTransferenciaNaTransacao(
   const semOrigemReal = original.contaOrigemId === original.contaDestinoId;
 
   const ultimoFechamento = await obterUltimoFechamentoAtivo(tx, original.empresaId);
-  validarDataDeMovimento(input.dataEstorno, ultimoFechamento);
+  validarDataDeMovimento(input.dataEstorno, ultimoFechamento, await obterDataInicioControle(tx, original.empresaId));
 
   const idsContas = semOrigemReal ? [original.contaDestinoId] : [original.contaOrigemId, original.contaDestinoId].sort();
   const contasTravadas = await tx.$queryRaw<{ id: string; saldo_atual: string; empresa_id: string }[]>`
@@ -851,7 +916,7 @@ export async function registrarMovimentoAplicacaoNaTransacao(
   }
 
   const ultimoFechamento = await obterUltimoFechamentoAtivo(tx, input.empresaId);
-  validarDataDeMovimento(input.data, ultimoFechamento);
+  validarDataDeMovimento(input.data, ultimoFechamento, await obterDataInicioControle(tx, input.empresaId));
 
   const idsContas = input.daContaId ? [input.daContaId, input.paraContaId].sort() : [input.paraContaId];
   const contasTravadas = await tx.$queryRaw<{ id: string; saldo_atual: string; empresa_id: string }[]>`
@@ -967,7 +1032,7 @@ export async function registrarEstornoMovimentoAplicacaoNaTransacao(
   }
 
   const ultimoFechamento = await obterUltimoFechamentoAtivo(tx, original.empresaId);
-  validarDataDeMovimento(input.dataEstorno, ultimoFechamento);
+  validarDataDeMovimento(input.dataEstorno, ultimoFechamento, await obterDataInicioControle(tx, original.empresaId));
 
   const idsContas = original.daContaId ? [original.daContaId, original.paraContaId].sort() : [original.paraContaId];
   const contasTravadas = await tx.$queryRaw<{ id: string; saldo_atual: string; empresa_id: string }[]>`
