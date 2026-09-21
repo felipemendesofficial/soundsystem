@@ -9,8 +9,16 @@ import { ConfirmarPrevisaoButton } from "@/components/confirmar-previsao-button"
 import { ExcluirLancamentoButton } from "@/components/excluir-lancamento-button";
 import { CancelarLancamentoButton } from "@/components/cancelar-lancamento-button";
 import { DataPrevisaoForm } from "@/components/data-previsao-form";
+import { AnexosLancamento, type ItemAnexo } from "@/components/anexos-lancamento";
 import { TIPOS_DOCUMENTO_LABEL, TIPOS_TAXA_CARTAO_LABEL, TIPOS_CARTAO_MODALIDADE_LABEL } from "@/lib/financeiro-labels";
 import { confirmarPrevisao, excluirLancamentoFinanceiro, atualizarDataPrevisao, cancelarLancamentoFinanceiro } from "../actions";
+import { gerarUrlVisualizacaoAnexo } from "../anexos-actions";
+
+function formatarTamanho(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 function formatarMoeda(valor: unknown) {
   return Number(valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -46,7 +54,7 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
       contaPrevista: true,
       processo: true,
       dadosCheque: true,
-      dadosCartao: { include: { operadora: true, operadoraCartaoTaxa: { include: { bandeira: true } } } },
+      dadosCartao: { include: { operadora: true, operadoraCartaoTaxa: { include: { bandeira: true } }, bandeira: true } },
       criadoPor: true,
       atualizadoPor: true,
       rateios: { include: { plano: true, rateiosCentroCusto: { include: { centroCusto: true } } } },
@@ -75,11 +83,24 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
       renegociacaoDestino: {
         include: { renegociacao: { include: { origens: { include: { lancamento: { include: { cliente: true, fornecedor: true } } } } } } },
       },
+      anexos: { include: { enviadoPor: true }, orderBy: { criadoEm: "desc" } },
     },
   });
   if (!lancamento) notFound();
 
   const renegociacaoOrigemAtiva = lancamento.renegociacoesOrigem[0];
+
+  const itensAnexo: ItemAnexo[] = await Promise.all(
+    lancamento.anexos.map(async (anexo) => ({
+      id: anexo.id,
+      nomeArquivo: anexo.nomeArquivo,
+      tipoMime: anexo.tipoMime,
+      tamanhoLabel: formatarTamanho(anexo.tamanhoBytes),
+      criadoEmLabel: formatarDataHora(anexo.criadoEm),
+      enviadoPorNome: anexo.enviadoPor?.nome ?? "-",
+      urlVisualizacao: await gerarUrlVisualizacaoAnexo(anexo.chaveStorage),
+    }))
+  );
 
   const totalAbertoNoGrupo = lancamento.grupoParcelamentoId
     ? await db.lancamentoFinanceiro.count({
@@ -214,7 +235,7 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
         </div>
       )}
 
-      {lancamento.dadosCartao && (
+      {lancamento.dadosCartao && lancamento.tipo === "receita" && (
         <div className="space-y-1 rounded-lg border border-border bg-card p-4 text-sm">
           <h2 className="mb-1 text-base font-semibold">Dados do Cartão</h2>
           <div className="flex justify-between"><span className="text-muted-foreground">Operadora</span><span className="font-medium">{lancamento.dadosCartao.operadora?.descricao ?? "-"}</span></div>
@@ -240,6 +261,14 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
               <span className="font-medium">{Number(lancamento.dadosCartao.percentualAplicado).toLocaleString("pt-BR")}%</span>
             </div>
           )}
+        </div>
+      )}
+
+      {lancamento.dadosCartao && lancamento.tipo === "despesa" && (
+        <div className="space-y-1 rounded-lg border border-border bg-card p-4 text-sm">
+          <h2 className="mb-1 text-base font-semibold">Dados do Cartão</h2>
+          <div className="flex justify-between"><span className="text-muted-foreground">Bandeira</span><span className="font-medium">{lancamento.dadosCartao.bandeira?.nome ?? "-"}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Número do Cartão</span><span className="font-medium">{lancamento.dadosCartao.numeroCartao ?? "-"}</span></div>
         </div>
       )}
 
@@ -410,6 +439,8 @@ export default async function LancamentoFinanceiroDetalhePage({ params }: { para
           </ul>
         </div>
       )}
+
+      <AnexosLancamento lancamentoId={id} anexos={itensAnexo} podeRemover={podeEditar} />
 
       {mostrarAcoes && (
         <div className="flex flex-wrap gap-2">

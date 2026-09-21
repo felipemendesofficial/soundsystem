@@ -19,6 +19,7 @@ import {
   ComboboxList,
 } from "@/components/ui/combobox";
 import { RateioEditor, type ItemRateio, type LinhaRateioEditor, novaChaveRateio } from "@/components/rateio-editor";
+import { CalculadoraButton } from "@/components/calculadora-button";
 import { cn } from "@/lib/utils";
 import { TIPOS_DOCUMENTO_LABEL, TIPOS_TAXA_CARTAO_LABEL } from "@/lib/financeiro-labels";
 import { erroContaParaBaixa } from "@/lib/regras-conta-baixa";
@@ -140,6 +141,7 @@ export type LancamentoFinanceiroDefaultValues = {
   chequeTerceiro: string;
   cartaoOperadoraId: string | null;
   cartaoOperadoraCartaoTaxaId: string | null;
+  cartaoBandeiraId: string | null;
   cartaoNumeroCartao: string;
   cartaoNumeroAutorizacao: string;
   cartaoTipoTaxa: string;
@@ -160,6 +162,7 @@ export function LancamentoFinanceiroForm({
   vendedores,
   operadorasCartao,
   taxasCartao,
+  bandeiras,
   defaultValues,
 }: {
   action: Action;
@@ -175,6 +178,7 @@ export function LancamentoFinanceiroForm({
   processoItens: { id: string; label: string; processoId: string }[];
   vendedores: ItemRateio[];
   operadorasCartao: ItemRateio[];
+  bandeiras: ItemRateio[];
   taxasCartao: {
     id: string;
     operadoraId: string;
@@ -207,6 +211,15 @@ export function LancamentoFinanceiroForm({
   const [cartaoOperadoraCartaoTaxaId, setCartaoOperadoraCartaoTaxaId] = useState<string | null>(
     defaultValues?.cartaoOperadoraCartaoTaxaId ?? null
   );
+  const [cartaoBandeiraId, setCartaoBandeiraId] = useState<string | null>(defaultValues?.cartaoBandeiraId ?? null);
+
+  function limparCamposCartao() {
+    setCampos((c) => ({ ...c, ...Object.fromEntries(CAMPOS_CARTAO.map((campo) => [campo, ""])) }));
+    setCartaoTipoTaxa("");
+    setCartaoOperadoraId(null);
+    setCartaoOperadoraCartaoTaxaId(null);
+    setCartaoBandeiraId(null);
+  }
 
   function selecionarTipoDocumento(novoTipo: string) {
     setTipoDocumento((atual) => {
@@ -217,10 +230,7 @@ export function LancamentoFinanceiroForm({
         setCampos((c) => ({ ...c, ...Object.fromEntries(CAMPOS_CHEQUE.map((campo) => [campo, ""])) }));
       }
       if (atual === "cartao" && novoTipo !== "cartao") {
-        setCampos((c) => ({ ...c, ...Object.fromEntries(CAMPOS_CARTAO.map((campo) => [campo, ""])) }));
-        setCartaoTipoTaxa("");
-        setCartaoOperadoraId(null);
-        setCartaoOperadoraCartaoTaxaId(null);
+        limparCamposCartao();
       }
       return novoTipo;
     });
@@ -402,6 +412,7 @@ export function LancamentoFinanceiroForm({
         <input type="hidden" name="cartaoTipoTaxa" value={cartaoTipoTaxa} />
         <input type="hidden" name="cartaoOperadoraId" value={cartaoOperadoraId ?? ""} />
         <input type="hidden" name="cartaoOperadoraCartaoTaxaId" value={cartaoOperadoraCartaoTaxaId ?? ""} />
+        <input type="hidden" name="cartaoBandeiraId" value={cartaoBandeiraId ?? ""} />
         <input type="hidden" name="rateioPlano" value={rateioPlanoSerializado} />
         <input type="hidden" name="rateioProcesso" value={rateioProcessoSerializado} />
         <input type="hidden" name="retencoes" value={retencoesSerializadas} />
@@ -430,6 +441,7 @@ export function LancamentoFinanceiroForm({
             onClick={() => {
               setTipo("despesa");
               setClienteId(null);
+              if (tipoDocumento === "cartao") limparCamposCartao();
             }}
           >
             Despesa
@@ -441,6 +453,7 @@ export function LancamentoFinanceiroForm({
             onClick={() => {
               setTipo("receita");
               setFornecedorId(null);
+              if (tipoDocumento === "cartao") limparCamposCartao();
             }}
           >
             Receita
@@ -513,7 +526,10 @@ export function LancamentoFinanceiroForm({
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
-            <Label htmlFor="valorOriginal" className={labelClass}>{parcelado ? "Valor Total (R$)" : "Valor (R$)"}</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="valorOriginal" className={labelClass}>{parcelado ? "Valor Total (R$)" : "Valor (R$)"}</Label>
+              <CalculadoraButton valorAtual={campos.valorOriginal} onResultado={(valor) => setCampos((atual) => ({ ...atual, valorOriginal: valor }))} />
+            </div>
             <Input id="valorOriginal" name="valorOriginal" type="number" step="0.01" min="0.01" required className={inputClass} {...campoTexto("valorOriginal")} />
           </div>
           <div className="space-y-2">
@@ -660,7 +676,7 @@ export function LancamentoFinanceiroForm({
           </div>
         )}
 
-        {tipoDocumento === "cartao" && (
+        {tipoDocumento === "cartao" && tipo === "receita" && (
           <div className="space-y-3 rounded-lg border border-border bg-card p-4">
             <Label className={labelClass}>Dados do Cartão</Label>
             <Combobox
@@ -729,6 +745,29 @@ export function LancamentoFinanceiroForm({
                 </p>
               )}
             </div>
+          </div>
+        )}
+
+        {tipoDocumento === "cartao" && tipo === "despesa" && (
+          <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+            <Label className={labelClass}>Dados do Cartão</Label>
+            <p className="text-xs text-muted-foreground">
+              Cartão próprio da empresa (ex.: cartão de crédito) — sem adquirente envolvido, só a bandeira e o número do cartão importam.
+            </p>
+            <div className="space-y-1">
+              <Label className="text-xs">Bandeira</Label>
+              <Select value={cartaoBandeiraId ?? ""} items={Object.fromEntries(bandeiras.map((b) => [b.id, b.label]))} onValueChange={(v) => setCartaoBandeiraId(v || null)}>
+                <SelectTrigger className="h-10 w-full bg-background">
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {bandeiras.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>{b.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Input name="cartaoNumeroCartao" placeholder="Número do Cartão" className="h-10 bg-background" {...campoTexto("cartaoNumeroCartao")} />
           </div>
         )}
 

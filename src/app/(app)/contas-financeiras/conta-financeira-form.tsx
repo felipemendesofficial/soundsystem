@@ -57,24 +57,31 @@ export function ContaFinanceiraForm({
   };
 }) {
   const [state, formAction, pending] = useActionState(action, {});
+  const editando = defaultValues !== undefined;
+  const [tipo, setTipo] = useState(defaultValues?.tipo ?? "conta_corrente");
   const [banco, setBanco] = useState<ItemBanco | null>(
     defaultValues?.bancoId ? bancos.find((b) => b.id === defaultValues.bancoId) ?? null : null
   );
 
   return (
     <form action={formAction} className="max-w-md space-y-6">
+      <input type="hidden" name="tipo" value={tipo} />
       <div className="space-y-2">
         <Label htmlFor="tipo" className={labelClass}>Tipo</Label>
-        <Select name="tipo" items={TIPOS} defaultValue={defaultValues?.tipo ?? "conta_corrente"}>
-          <SelectTrigger id="tipo" className={`w-full ${inputClass}`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.entries(TIPOS).map(([valor, rotulo]) => (
-              <SelectItem key={valor} value={valor}>{rotulo}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {editando ? (
+          <p className="rounded-md border border-border bg-muted px-3.5 py-2.5 text-base">{TIPOS[tipo as keyof typeof TIPOS]}</p>
+        ) : (
+          <Select value={tipo} items={TIPOS} onValueChange={(v) => v && setTipo(v)}>
+            <SelectTrigger id="tipo" className={`w-full ${inputClass}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(TIPOS).map(([valor, rotulo]) => (
+                <SelectItem key={valor} value={valor}>{rotulo}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       <div className="space-y-2">

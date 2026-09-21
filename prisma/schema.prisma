@@ -227,6 +227,7 @@ model Usuario {
   lancamentosFinanceirosCriados     LancamentoFinanceiro[]     @relation("LancamentoFinanceiroCriadoPor")
   lancamentosFinanceirosAtualizados LancamentoFinanceiro[]     @relation("LancamentoFinanceiroAtualizadoPor")
   lancamentosFinanceirosCancelados  LancamentoFinanceiro[]     @relation("LancamentoFinanceiroCanceladoPor")
+  anexosLancamentoEnviados          AnexoLancamento[]          @relation("AnexoLancamentoEnviadoPor")
   baixasFinanceiras                 Baixa[]                    @relation("BaixaUsuario")
   transferenciasFeitas              TransferenciaEntreContas[] @relation("TransferenciaUsuario")
   transferenciasEstornadas          TransferenciaEntreContas[] @relation("TransferenciaEstornadoPor")
@@ -892,7 +893,8 @@ model Bandeira {
   nome  String  @unique
   ativo Boolean @default(true)
 
-  taxas OperadoraCartaoTaxa[]
+  taxas       OperadoraCartaoTaxa[]
+  dadosCartao DadosCartao[]
 
   @@map("bandeiras")
 }
@@ -1310,6 +1312,7 @@ model LancamentoFinanceiro {
   movimentacoes       MovimentacaoFinanceira[]
   renegociacoesOrigem RenegociacaoOrigem[]
   renegociacaoDestino RenegociacaoDestino?
+  anexos              AnexoLancamento[]
 
   @@index([empresaId, status])
   @@index([empresaId, tipo, natureza])
@@ -1317,6 +1320,30 @@ model LancamentoFinanceiro {
   @@index([recorrenteId])
   @@index([grupoParcelamentoId])
   @@map("lancamentos_financeiros")
+}
+
+/// Documento anexado a um LancamentoFinanceiro (NF, orçamento, comprovante de
+/// pagamento, comprovante de estorno...) — arquivo em si fica num bucket S3
+/// (ou compatível), nunca no Postgres; aqui só o metadado + a key do objeto
+/// (ver `src/lib/storage.ts`). Anexar é permitido em QUALQUER status (o
+/// comprovante de baixa só existe depois de baixado, o de estorno só depois
+/// de estornado); remover só é permitido com o título ainda `aberto` — ver
+/// `removerAnexoLancamento`.
+model AnexoLancamento {
+  id           String   @id @default(uuid())
+  lancamentoId String   @map("lancamento_id")
+  nomeArquivo  String   @map("nome_arquivo")
+  chaveStorage String   @map("chave_storage")
+  tipoMime     String   @map("tipo_mime")
+  tamanhoBytes Int      @map("tamanho_bytes")
+  enviadoPorId String?  @map("enviado_por_id")
+  criadoEm     DateTime @default(now()) @map("criado_em")
+
+  lancamento LancamentoFinanceiro @relation(fields: [lancamentoId], references: [id], onDelete: Cascade)
+  enviadoPor Usuario?             @relation("AnexoLancamentoEnviadoPor", fields: [enviadoPorId], references: [id])
+
+  @@index([lancamentoId])
+  @@map("anexos_lancamento")
 }
 
 /// Rateio por Plano de Contas — soma 100% do LancamentoFinanceiro.
@@ -1462,11 +1489,19 @@ model DadosCheque {
   @@map("dados_cheque")
 }
 
+/// Operadora/Taxa só fazem sentido numa RECEITA paga com cartão (existe uma
+/// adquirente real processando e cobrando taxa de repasse). Numa DESPESA paga
+/// com cartão próprio da empresa não existe adquirente nessa direção — só a
+/// bandeira do cartão (bandeiraId, direto, sem passar por Operadora/Taxa) e o
+/// número dele importam. operadoraId/operadoraCartaoTaxaId/tipoTaxa/
+/// percentualAplicado ficam sempre null numa despesa; bandeiraId fica sempre
+/// null numa receita (a bandeira dela já vem de operadoraCartaoTaxa.bandeira).
 model DadosCartao {
   id                    String          @id @default(uuid())
   lancamentoId          String          @unique @map("lancamento_id")
   operadoraId           String?         @map("operadora_id")
   operadoraCartaoTaxaId String?         @map("operadora_cartao_taxa_id")
+  bandeiraId            String?         @map("bandeira_id")
   // Snapshot do percentual (dentre os 4 de OperadoraCartaoTaxa, conforme
   // `tipoTaxa`) vigente no momento do lançamento — nunca recalculado depois,
   // pra uma mudança futura na Taxa não alterar lançamentos já registrados.
@@ -1478,6 +1513,7 @@ model DadosCartao {
   lancamento          LancamentoFinanceiro @relation(fields: [lancamentoId], references: [id])
   operadora           OperadoraCartao?     @relation(fields: [operadoraId], references: [id])
   operadoraCartaoTaxa OperadoraCartaoTaxa? @relation(fields: [operadoraCartaoTaxaId], references: [id])
+  bandeira            Bandeira?            @relation(fields: [bandeiraId], references: [id])
 
   @@map("dados_cartao")
 }

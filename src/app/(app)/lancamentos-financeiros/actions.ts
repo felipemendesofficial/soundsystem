@@ -127,6 +127,7 @@ const lancamentoSchema = z.object({
   chequeTerceiro: z.string().trim().nullish(),
   cartaoOperadoraId: z.string().trim().nullish(),
   cartaoOperadoraCartaoTaxaId: z.string().trim().nullish(),
+  cartaoBandeiraId: z.string().trim().nullish(),
   cartaoNumeroCartao: z.string().trim().nullish(),
   cartaoNumeroAutorizacao: z.string().trim().nullish(),
   cartaoTipoTaxa: z.enum(["a_vista", "antecipacao", "parc_estabelecimento", "parc_cliente"]).optional(),
@@ -136,6 +137,15 @@ const lancamentoSchema = z.object({
 }).refine((dados) => dados.parcelado !== "on" || (dados.numeroParcelas ?? 0) >= 2, {
   message: "Informe o número de parcelas (mínimo 2).",
   path: ["numeroParcelas"],
+}).refine((dados) => !(dados.tipoDocumento === "cartao" && dados.tipo === "receita") || !!dados.cartaoOperadoraId, {
+  message: "Operadora é obrigatória para Receita paga com cartão.",
+  path: ["cartaoOperadoraId"],
+}).refine((dados) => !(dados.tipoDocumento === "cartao" && dados.tipo === "receita") || !!dados.cartaoOperadoraCartaoTaxaId, {
+  message: "Selecione a combinação de bandeira/modalidade pra calcular a taxa aplicada.",
+  path: ["cartaoOperadoraCartaoTaxaId"],
+}).refine((dados) => !(dados.tipoDocumento === "cartao" && dados.tipo === "despesa") || !!dados.cartaoBandeiraId, {
+  message: "Selecione a bandeira do cartão.",
+  path: ["cartaoBandeiraId"],
 });
 
 export type DadosLancamento = z.infer<typeof lancamentoSchema>;
@@ -176,6 +186,7 @@ function lerFormData(formData: FormData) {
     chequeTerceiro: formData.get("chequeTerceiro"),
     cartaoOperadoraId: formData.get("cartaoOperadoraId"),
     cartaoOperadoraCartaoTaxaId: formData.get("cartaoOperadoraCartaoTaxaId"),
+    cartaoBandeiraId: formData.get("cartaoBandeiraId"),
     cartaoNumeroCartao: formData.get("cartaoNumeroCartao"),
     cartaoNumeroAutorizacao: formData.get("cartaoNumeroAutorizacao"),
     cartaoTipoTaxa: formData.get("cartaoTipoTaxa") || undefined,
@@ -242,6 +253,13 @@ async function validarRegrasDeNegocio(dados: DadosLancamento, ctx: { empresaId: 
         percentualAplicado = percentualPorTipo[dados.cartaoTipoTaxa] ?? null;
       }
     }
+  }
+  // Despesa paga com cartão próprio: sem adquirente envolvido, só a
+  // bandeira do cartão importa — Bandeira é catálogo global (sem
+  // empresaId/grupoId), ver CLAUDE.md.
+  if (dados.tipoDocumento === "cartao" && dados.tipo === "despesa" && dados.cartaoBandeiraId) {
+    const bandeira = await db.bandeira.findFirst({ where: { id: dados.cartaoBandeiraId, ativo: true } });
+    if (!bandeira) return { erro: "Bandeira não encontrada." } as const;
   }
 
   try {
@@ -395,14 +413,23 @@ function montarDadosPersistencia(dados: DadosLancamento, valores: ValidacaoOk) {
     dadosCartao:
       dados.tipoDocumento === "cartao"
         ? {
-            create: {
-              operadoraId: dados.cartaoOperadoraId || null,
-              operadoraCartaoTaxaId: dados.cartaoOperadoraCartaoTaxaId || null,
-              percentualAplicado: valores.percentualAplicado,
-              numeroCartao: dados.cartaoNumeroCartao || null,
-              numeroAutorizacao: dados.cartaoNumeroAutorizacao || null,
-              tipoTaxa: dados.cartaoTipoTaxa || null,
-            },
+            create:
+              dados.tipo === "receita"
+                ? {
+                    operadoraId: dados.cartaoOperadoraId || null,
+                    operadoraCartaoTaxaId: dados.cartaoOperadoraCartaoTaxaId || null,
+                    percentualAplicado: valores.percentualAplicado,
+                    numeroCartao: dados.cartaoNumeroCartao || null,
+                    numeroAutorizacao: dados.cartaoNumeroAutorizacao || null,
+                    tipoTaxa: dados.cartaoTipoTaxa || null,
+                  }
+                : // Despesa: sem adquirente/taxa de repasse nessa direção —
+                  // nunca preenche operadora/taxa/tipoTaxa/percentual com um
+                  // valor "chute" só pra satisfazer o campo, ficam null.
+                  {
+                    bandeiraId: dados.cartaoBandeiraId || null,
+                    numeroCartao: dados.cartaoNumeroCartao || null,
+                  },
           }
         : undefined,
   };

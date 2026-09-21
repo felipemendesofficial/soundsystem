@@ -102,9 +102,14 @@ export async function atualizarContaFinanceira(
   const parsed = toData(formData);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
+  // Tipo não pode mudar depois de criada (Baixa/Transferência/Aplicação já
+  // validam contra o tipo original) — ignora o que veio no formulário e
+  // nunca sobrescreve, mesmo que o form tenha mandado outro valor.
+  const { tipo: _tipoIgnorado, ...dadosSemTipo } = montarDados(parsed.data);
+
   const { count } = await db.contaFinanceira.updateMany({
     where: { id, empresaId: permissao.session.user.empresaId! },
-    data: montarDados(parsed.data),
+    data: dadosSemTipo,
   });
   if (count === 0) return { erro: "Conta Financeira não encontrada." };
 

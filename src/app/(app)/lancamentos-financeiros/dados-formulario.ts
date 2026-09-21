@@ -19,6 +19,7 @@ export async function obterDadosFormularioLancamento(grupoId: string, empresaId:
     vendedores,
     operadorasCartao,
     taxasCartao,
+    bandeiras,
   ] = await Promise.all([
       db.cliente.findMany({ where: { grupoId }, orderBy: { nome: "asc" } }),
       db.fornecedor.findMany({ where: { grupoId }, orderBy: { nome: "asc" } }),
@@ -38,6 +39,7 @@ export async function obterDadosFormularioLancamento(grupoId: string, empresaId:
         include: { bandeira: true },
         orderBy: [{ bandeira: { nome: "asc" } }, { modalidade: "asc" }],
       }),
+      db.bandeira.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
     ]);
 
   const processoPadrao = processos.find((p) => p.padrao) ?? (processos.length === 1 ? processos[0] : undefined);
@@ -76,5 +78,6 @@ export async function obterDadosFormularioLancamento(grupoId: string, empresaId:
       taxaParcEstabelecimento: t.taxaParcEstabelecimento.toString(),
       taxaParcCliente: t.taxaParcCliente.toString(),
     })),
+    bandeiras: bandeiras.map((b) => ({ id: b.id, label: b.nome })),
   };
 }
