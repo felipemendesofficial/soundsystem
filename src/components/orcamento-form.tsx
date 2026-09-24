@@ -83,6 +83,7 @@ export function OrcamentoForm({
   const [valorCompraTotalInformado, setValorCompraTotalInformado] = useState(
     defaultValues?.valorCompraTotalInformado ?? ""
   );
+  const [erroDuplicado, setErroDuplicado] = useState<string | null>(null);
   const [linhas, setLinhas] = useState<Linha[]>(() =>
     (defaultValues?.itens ?? []).map((i) => ({
       key: novaChave(),
@@ -107,6 +108,15 @@ export function OrcamentoForm({
 
   function atualizarLinha(key: string, patch: Partial<Linha>) {
     setLinhas((atual) => atual.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  }
+
+  function selecionarProduto(key: string, produto: Item | null) {
+    if (produto && linhas.some((l) => l.key !== key && l.produto?.id === produto.id)) {
+      setErroDuplicado(`"${produto.label}" já foi adicionado a este Orçamento.`);
+      return;
+    }
+    setErroDuplicado(null);
+    atualizarLinha(key, { produto });
   }
 
   const itensSerializados = JSON.stringify(
@@ -296,7 +306,7 @@ export function OrcamentoForm({
                 <Combobox
                   items={produtos}
                   value={linha.produto}
-                  onValueChange={(item: Item | null) => atualizarLinha(linha.key, { produto: item })}
+                  onValueChange={(item: Item | null) => selecionarProduto(linha.key, item)}
                   itemToStringLabel={(item: Item) => item.label}
                   itemToStringValue={(item: Item) => item.id}
                 >
@@ -368,6 +378,7 @@ export function OrcamentoForm({
         </div>
       </div>
 
+      {erroDuplicado && <p role="alert" className="text-sm text-destructive">{erroDuplicado}</p>}
       {state.erro && <p role="alert" className="text-sm text-destructive">{state.erro}</p>}
       <div className="h-16" />
     </form>

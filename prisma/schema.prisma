@@ -689,6 +689,7 @@ model ItemOrcamento {
   orcamento Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
   produto   Produto   @relation(fields: [produtoId], references: [id])
 
+  @@unique([orcamentoId, produtoId])
   @@map("orcamento_itens")
 }
 

@@ -41,6 +41,11 @@ const schema = z.object({
       ctx.addIssue({ code: "custom", message: resultado.error.issues[0]?.message ?? "Itens inválidos." });
       return z.NEVER;
     }
+    const produtoIds = resultado.data.map((i) => i.produtoId);
+    if (new Set(produtoIds).size !== produtoIds.length) {
+      ctx.addIssue({ code: "custom", message: "Um mesmo produto não pode ser lançado duas vezes no Orçamento." });
+      return z.NEVER;
+    }
     return resultado.data;
   }),
 });
